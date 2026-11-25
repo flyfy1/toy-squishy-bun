@@ -9,13 +9,14 @@ class Sfx {
   private creakBp: BiquadFilterNode | null = null
   private creakGain: GainNode | null = null
   private noise: AudioBuffer | null = null
+  private muted = false
 
   unlock() {
     audio.unlock()
     const ctx = audio.ctx
     if (!ctx || this.out) return
     const out = ctx.createGain()
-    out.gain.value = 0.9
+    out.gain.value = this.muted ? 0 : 0.9
     out.connect(ctx.destination)
     this.out = out
     const len = ctx.sampleRate * 2
@@ -104,11 +105,19 @@ class Sfx {
     this.burstNoise(0.08, 0.05, 'lowpass', 1200, 300, 0.8)
   }
 
-  burst() {
-    this.blip(400, 260, 0.07, 0.16)
-    this.blip(330, 200, 0.07, 0.14, 0.06)
-    this.blip(260, 150, 0.09, 0.12, 0.12)
-    this.burstNoise(0.28, 0.16, 'bandpass', 900, 250, 1.6)
+  /** Wet squelch: three quick pitch-dropping blips over a band-passed splat. Soup is wetter and lower. */
+  burst(kind = 'mochi') {
+    const k = kind === 'baozi' ? 0.8 : kind === 'tangyuan' ? 0.9 : 1
+    this.blip(400 * k, 260 * k, 0.07, 0.16)
+    this.blip(330 * k, 200 * k, 0.07, 0.14, 0.06)
+    this.blip(260 * k, 150 * k, 0.09, 0.12, 0.12)
+    this.burstNoise(0.28, 0.16, 'bandpass', 900 * k, 250, kind === 'baozi' ? 3 : 1.6)
+    if (kind === 'baozi') this.burstNoise(0.4, 0.06, 'bandpass', 2400, 700, 6, 0.1)
+  }
+
+  setMuted(m: boolean) {
+    this.muted = m
+    if (this.out && audio.ctx) this.out.gain.setTargetAtTime(m ? 0 : 0.9, audio.ctx.currentTime, 0.02)
   }
 
   slurp() {

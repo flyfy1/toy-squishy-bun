@@ -31,6 +31,24 @@ export const MOCHI: Skin = {
   flat: 2.3,
 }
 
+/** Fillings (爆浆): same lighting, their own colour ramp. */
+export const CUSTARD: Skin = { deep: [222, 146, 44], edge: [246, 186, 62], mid: [255, 216, 100], lit: [255, 246, 196], sss: [255, 196, 80], sssAmt: 0.3, gloss: 1.15, flat: 2 }
+export const SOUP: Skin = { deep: [176, 104, 46], edge: [212, 146, 74], mid: [236, 186, 110], lit: [252, 226, 170], sss: [240, 170, 90], sssAmt: 0.35, gloss: 1.3, flat: 2 }
+export const SESAME: Skin = { deep: [22, 18, 20], edge: [40, 34, 36], mid: [62, 54, 56], lit: [104, 96, 98], sss: [70, 60, 60], sssAmt: 0.2, gloss: 1.25, flat: 2 }
+export const JAM: Skin = { deep: [176, 30, 62], edge: [214, 52, 82], mid: [240, 88, 112], lit: [255, 160, 170], sss: [255, 90, 110], sssAmt: 0.3, gloss: 1.25, flat: 2 }
+
+export const BAOZI: Skin = { deep: [206, 180, 152], edge: [232, 214, 190], mid: [249, 240, 226], lit: [255, 252, 246], sss: [240, 206, 168], sssAmt: 0.25, gloss: 0.5, flat: 2.05 }
+export const TANGYUAN: Skin = { deep: [200, 192, 204], edge: [226, 222, 230], mid: [246, 244, 247], lit: [255, 255, 255], sss: [238, 226, 240], sssAmt: 0.3, gloss: 1.1, flat: 2.2 }
+export const PAW: Skin = { deep: [226, 184, 178], edge: [244, 216, 208], mid: [255, 241, 234], lit: [255, 252, 248], sss: [255, 196, 186], sssAmt: 0.3, gloss: 0.9, flat: 2.3 }
+
+/** The filling swelling out through a split in the skin. */
+export interface Ooze {
+  x: number
+  y: number
+  r: number
+  fill: Skin
+}
+
 export interface Dent {
   x: number
   y: number
@@ -47,6 +65,8 @@ export class Shader {
   private u32: Uint32Array | null = null
   private h = new Float32Array(1)
   rad = new Float32Array(NB)
+  cx = 0
+  cy = 0
   private radTmp = new Float32Array(NB)
   private tmpH = new Float32Array(1)
   /** grid: origin (css px) and size of one shading pixel (css px) */
@@ -64,8 +84,8 @@ export class Shader {
   specX = 0
   specY = 0
 
-  layout(cx: number, cy: number, R: number, floor: number) {
-    const sp = Math.max(1, (4.2 * R) / 300)
+  layout(cx: number, cy: number, R: number, floor: number, coarse = 1) {
+    const sp = Math.max(1, (4.2 * R) / 300) * coarse
     this.sp = sp
     this.gx = cx - 2.1 * R
     this.gy = cy - 1.9 * R
@@ -83,7 +103,7 @@ export class Shader {
    * Shade the silhouette given by the dense outline (xs, ys) around centre (cx, cy).
    * R: bun radius; floor: table line (css px); dents: finger presses.
    */
-  shade(xs: Float32Array, ys: Float32Array, n: number, cx: number, cy: number, R: number, floor: number, dents: Dent[], skin: Skin) {
+  shade(xs: Float32Array, ys: Float32Array, n: number, cx: number, cy: number, R: number, floor: number, dents: Dent[], skin: Skin, ooze: Ooze | null = null) {
     const { GW, GH, sp, gx, gy, rad, h } = this
     const u32 = this.u32!
     // 1. radius of the silhouette by angle around (cx, cy)
@@ -129,6 +149,42 @@ export class Shader {
       }
       rad.set(tmp)
     }
+    // the filling: union its circle into the silhouette, then smooth again so the neck is a soft fillet
+    if (ooze && ooze.r > 0.5) {
+      const ox = ooze.x - cx
+      const oy = ooze.y - cy
+      const d2 = ox * ox + oy * oy
+      for (let k = 0; k < NB; k++) {
+        const a = (k / NB) * TAU - Math.PI
+        const ux = Math.cos(a)
+        const uy = Math.sin(a)
+        const pr = ox * ux + oy * uy
+        const disc = ooze.r * ooze.r - (d2 - pr * pr)
+        if (disc > 0 && pr > 0) {
+          const far = pr + Math.sqrt(disc)
+          if (far > rad[k]) rad[k] = far
+        }
+      }
+      const tmp = this.radTmp
+      const W = 7
+      for (let k = 0; k < NB; k++) {
+        let acc = 0
+        for (let j = -W; j <= W; j++) acc += rad[(k + j + NB) % NB]
+        tmp[k] = acc / (2 * W + 1)
+      }
+      rad.set(tmp)
+      for (let k = 0; k < NB; k++) {
+        const a = (k / NB) * TAU - Math.PI
+        const x = cx + Math.cos(a) * rad[k]
+        const y = cy + Math.sin(a) * rad[k]
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+    this.cx = cx
+    this.cy = cy
 
     // 2. bounding box in grid pixels, with a margin for the bilinear edge
     const bx0 = Math.max(1, Math.floor((minX - gx) / sp) - 3)
@@ -146,7 +202,9 @@ export class Shader {
     const dn = dents.filter((d) => d.depth > 0.004)
     const dsig = 0.2 * R
     const dInv = 1 / (2 * dsig * dsig)
-    const dAmp = (0.3 * R) / sp
+    const dAmp = (0.4 * R) / sp
+    const oH = ooze ? (0.75 * ooze.r) / sp : 0
+    const oL = ooze ? (0.03 * R) / sp : 0
     const rb = Math.max(1, Math.round((0.045 * R) / sp))
     const ex0 = Math.max(0, bx0 - 1 - 2 * rb)
     const ex1 = Math.min(GW - 1, bx1 + 1 + 2 * rb)
@@ -173,7 +231,20 @@ export class Shader {
           const ex = wx - dn[k].x
           const ey = wy - dn[k].y
           const e2 = ex * ex + ey * ey
-          if (e2 < 9 * dsig * dsig) hv -= dn[k].depth * dAmp * Math.exp(-e2 * dInv) * edgeFade(s)
+          if (e2 < 16 * dsig * dsig) hv += dn[k].depth * dAmp * (0.5 * Math.exp(-e2 * dInv * 0.4) - 1.2 * Math.exp(-e2 * dInv)) * edgeFade(s)
+        }
+        if (ooze) {
+          const qx = wx - ooze.x
+          const qy = wy - ooze.y
+          const q = Math.sqrt(qx * qx + qy * qy) / ooze.r
+          // the filling is its own glossy dome sitting in the split, not a bump on the rim's cliff
+          if (q < 1) {
+            const wq = q < 0.6 ? 1 : ((1 - q) / 0.4) ** 2 * (3 - 2 * ((1 - q) / 0.4))
+            hv = hv * (1 - wq) + (H * 0.3 + oH * Math.sqrt(1 - q * q)) * wq
+          }
+          // the torn skin lip rolls up round the split
+          const lq = q - 1.05
+          if (lq > -0.4 && lq < 0.4) hv += oL * Math.exp(-(lq * lq) / 0.03)
         }
         h[o] = hv
       }
@@ -231,12 +302,52 @@ export class Shader {
           g = mg + (lg - mg) * t
           b = mb + (lb - mb) * t
         }
+        let fm = 0
+        if (ooze) {
+          const qx = gx + (x + 0.5) * sp - ooze.x
+          const qy = wy - ooze.y
+          const q = Math.sqrt(qx * qx + qy * qy) / ooze.r
+          fm = q < 0.72 ? 1 : q < 1 ? sq((1 - q) / 0.28) * (3 - 2 * ((1 - q) / 0.28)) : 0
+          if (fm > 0) {
+            const F = ooze.fill
+            let fr2: number, fg2: number, fb2: number
+            if (w < 0.42) {
+              const t = w / 0.42
+              fr2 = F.deep[0] + (F.edge[0] - F.deep[0]) * t
+              fg2 = F.deep[1] + (F.edge[1] - F.deep[1]) * t
+              fb2 = F.deep[2] + (F.edge[2] - F.deep[2]) * t
+            } else if (w < 0.74) {
+              const t = (w - 0.42) / 0.32
+              fr2 = F.edge[0] + (F.mid[0] - F.edge[0]) * t
+              fg2 = F.edge[1] + (F.mid[1] - F.edge[1]) * t
+              fb2 = F.edge[2] + (F.mid[2] - F.edge[2]) * t
+            } else {
+              const t = (w - 0.74) / 0.26
+              fr2 = F.mid[0] + (F.lit[0] - F.mid[0]) * t
+              fg2 = F.mid[1] + (F.lit[1] - F.mid[1]) * t
+              fb2 = F.mid[2] + (F.lit[2] - F.mid[2]) * t
+            }
+            r += (fr2 - r) * fm
+            g += (fg2 - g) * fm
+            b += (fb2 - b) * fm
+          }
+          if (q > 0.85 && q < 1.25) {
+            // a little shadow in the crease where skin meets filling
+            const c = 1 - 0.14 * Math.exp(-((q - 1.02) ** 2) / 0.008)
+            r *= c
+            g *= c * 0.97
+            b *= c * 0.97
+          }
+        }
         // Fresnel edge: thin skin at grazing angles lets the warm inside show through
         const fr = (1 - nz) * (1 - nz)
-        const sa = skin.sssAmt * fr
-        r += (sr - r) * sa
-        g += (sg - g) * sa
-        b += (sb - b) * sa
+        const sa = (fm > 0 ? skin.sssAmt + (ooze!.fill.sssAmt - skin.sssAmt) * fm : skin.sssAmt) * fr
+        const ssr = fm > 0 ? sr + (ooze!.fill.sss[0] - sr) * fm : sr
+        const ssg = fm > 0 ? sg + (ooze!.fill.sss[1] - sg) * fm : sg
+        const ssb = fm > 0 ? sb + (ooze!.fill.sss[2] - sb) * fm : sb
+        r += (ssr - r) * sa
+        g += (ssg - g) * sa
+        b += (ssb - b) * sa
         // pink bounce from the mat on surfaces facing down
         if (ny > 0) {
           const bo = ny * fr * 0.5
@@ -247,6 +358,7 @@ export class Shader {
         r *= ao
         g *= ao * 0.985
         b *= ao * 0.99
+        const gl = fm > 0 ? gloss + (ooze!.fill.gloss - gloss) * fm : gloss
         // gloss: tight key highlight + broad sheen + rim light
         const nh = nx * Hk[0] + ny * Hk[1] + nz * Hk[2]
         const nh2 = nx * H2[0] + ny * H2[1] + nz * H2[2]
@@ -255,7 +367,7 @@ export class Shader {
           const p8 = pow8(nh)
           const p16 = p8 * p8
           const p128 = pow8(p16)
-          spec = (p128 * 0.95 + p16 * 0.16 + p8 * 0.05) * gloss
+          spec = (p128 * 0.95 + p16 * 0.16 + p8 * 0.05) * gl
           if (nh > best) {
             best = nh
             bestX = x
@@ -264,7 +376,7 @@ export class Shader {
         }
         if (nh2 > 0) {
           const q = pow8(nh2)
-          spec += q * 0.45 * gloss
+          spec += q * 0.45 * gl
         }
         if (spec > 1) spec = 1
         r += (255 - r) * spec
@@ -276,6 +388,20 @@ export class Shader {
     this.specX = gx + (bestX + 0.5) * sp
     this.specY = gy + (bestY + 0.5) * sp
     this.ctx.putImageData(this.img!, 0, 0, bx0, by0, bx1 - bx0 + 1, by1 - by0 + 1)
+  }
+
+  /** The silhouette as the radius table sees it (used as the clip while the filling is out). */
+  outline(ctx: CanvasRenderingContext2D) {
+    const { rad, cx, cy } = this
+    ctx.beginPath()
+    for (let k = 0; k < NB; k += 2) {
+      const a = (k / NB) * TAU - Math.PI
+      const x = cx + Math.cos(a) * rad[k]
+      const y = cy + Math.sin(a) * rad[k]
+      if (k) ctx.lineTo(x, y)
+      else ctx.moveTo(x, y)
+    }
+    ctx.closePath()
   }
 
   /** Silhouette radius at angle a (radians) around the centre used by the last shade(). */

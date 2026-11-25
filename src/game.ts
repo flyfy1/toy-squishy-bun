@@ -3,9 +3,12 @@
 // the filling pops out (design section 3).
 import { setupCanvas, runLoop, haptic, clamp } from './engine/juice'
 import { Body, N } from './body'
-import { Shader, MOCHI, type Dent } from './shade'
+import { Shader, MOCHI, BAOZI, TANGYUAN, PAW, CUSTARD, SOUP, SESAME, JAM, type Dent, type Ooze, type Skin } from './shade'
+import type { Skin as SkinId } from './share'
 import { drawFace, type FaceState } from './face'
 import { sfx } from './sfx'
+import { t, type Key } from './i18n'
+import { propLayout, drawCup, drawNote, drawSteam, HAND, type PropLayout } from './props'
 
 export type { FaceState }
 
@@ -15,10 +18,17 @@ export interface GameEvents {
   onBurst(n: number): void
   onStretch(pct: number): void
   onFace(state: FaceState): void
+  /** one line of monologue under the bun */
+  onLine(key: Key, vars?: Record<string, string | number>): void
 }
 
 export interface GameApi {
   dispose(): void
+  setSkin(s: SkinId): void
+  setName(n: string): void
+  setMuted(m: boolean): void
+  /** css px y where the monologue line goes (under the bun) */
+  lineY(): number
 }
 
 interface Ptr {
@@ -44,10 +54,17 @@ interface Blob {
   tIn: number
 }
 
+const SKINS: Record<SkinId, { body: Skin; fill: Skin }> = {
+  mochi: { body: MOCHI, fill: CUSTARD },
+  baozi: { body: BAOZI, fill: SOUP },
+  tangyuan: { body: TANGYUAN, fill: SESAME },
+  paw: { body: PAW, fill: JAM },
+}
+
 const DENSE = 4 // outline samples per node segment
 const ND = N * DENSE
 
-export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
+export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { skin: SkinId; name: string }): GameApi {
   const q = new URLSearchParams(location.search)
   const freeze = q.get('freeze') === '1'
   const forcedFace = q.get('face') as FaceState | null
@@ -64,6 +81,16 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
   const ptrs = new Map<number, Ptr>()
   const ghosts: Ptr[] = []
   let blob: Blob | null = null
+  let seam: { node: number; t: number } | null = null
+  let skin: SkinId = opts.skin
+  let name = opts.name
+  let props: PropLayout | null = null
+  let lastLine = -10
+  let lastLineKey = ''
+  let maxReleases = 0
+  let coarse = false // auto-degrade: coarser shading grid
+  let slowT = 0
+  let frameEMA = 16
   let R = 100
   let started = false
   let squeezes = 0
@@ -89,14 +116,16 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
   let restCY = 0
   let restH = 1
   const faceRest = { cx: 0, cy: 0, th: 0, s: 0 }
+  const restRad = new Float32Array(512)
+  const flag = { a: 0, v: 0, px: 0, py: 0, init: false }
 
   const { stage, dispose: disposeCanvas } = setupCanvas(canvas, (s) => {
     // portrait phones are width-limited: a slightly bigger bun (the 1.6 R stretch still fits)
-    R = Math.min(s.w * 0.3, s.h * 0.26)
+    R = Math.min(s.w * 0.35, s.h * 0.26)
     const cx = s.w / 2
     const cy = s.h * 0.52
     body.layout(cx, cy, R)
-    shader.layout(cx, cy, R, body.floor)
+    shader.layout(cx, cy, R, body.floor, coarse ? 1.5 : 1)
     // rest centroid and the face anchor in polar coordinates of the rest silhouette
     let sx = 0,
       sy = 0,
@@ -113,10 +142,12 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     restCY = sy / N - 0.1 * R
     buildOutline(body.hx, body.hy)
     shader.shade(xs, ys, ND, restCX, restCY, R, body.floor, [], MOCHI)
+    restRad.set(shader.rad)
     faceRest.cx = cx
     faceRest.cy = cy + 0.16 * R
     faceRest.th = Math.atan2(faceRest.cy - restCY, faceRest.cx - restCX)
     faceRest.s = Math.hypot(faceRest.cx - restCX, faceRest.cy - restCY) / shader.radAt(faceRest.th)
+    props = propLayout(s.w, s.h, cx, body.floor, R)
     buildBg(s.w, s.h, s.dpr)
     lastShadeKey = ''
   })
@@ -189,6 +220,11 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     V.addColorStop(1, 'rgba(214,120,146,0.16)')
     g.fillStyle = V
     g.fillRect(0, 0, w, h)
+    // desk props
+    if (props) {
+      drawCup(g, props.cup.x, props.cup.y, props.cup.w)
+      drawNote(g, props.note.x, props.note.y, props.note.w, props.note.rot, name, t('sq_note'))
+    }
   }
 
   // ---------- geometry helpers ----------
@@ -320,6 +356,14 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     if (counted) {
       squeezes++
       ev.onSqueeze(squeezes)
+      if (squeezes === 50) say('sq_l_m50', undefined, true)
+      else if (squeezes === 200) say('sq_l_m200', undefined, true)
+      else if (squeezes === 1) say('sq_l_felt')
+      else if (p.mode === 'grab' && p.stretch > 1.3) say('sq_l_taffy')
+      else if (p.mode === 'press' && p.dMax > 0.8 && !blob) {
+        maxReleases++
+        say(name && maxReleases % 2 === 0 ? 'sq_l_name' : 'sq_l_job', { name })
+      } else if (squeezes % 9 === 0) say('sq_l_again')
     }
     if (p.mode === 'grab' && p.stretch > 1.12) {
       ev.onStretch(Math.round(p.stretch * 100))
@@ -330,6 +374,14 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     idleT = 0
   }
 
+  /** Say one line (rate limited, never the same one twice in a row). */
+  function say(key: Key, vars?: Record<string, string | number>, force = false) {
+    if (!force && (time - lastLine < 2.6 || key === lastLineKey)) return
+    lastLine = time
+    lastLineKey = key
+    ev.onLine(key, vars)
+  }
+
   function wake() {
     hop = 1e-6
     face = 'surprised'
@@ -337,6 +389,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     ev.onFace(face)
     sfx.boing()
     haptic(10)
+    say('sq_l_proof', undefined, true)
   }
 
   const onDown = (e: PointerEvent) => {
@@ -380,6 +433,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     if (presses.length === 0 && !grab && ghosts.length) presses.push(ghosts[ghosts.length - 1])
     else ghosts.length = 0
     presses = presses.slice(0, 2)
+    if (presses.length === 2 && presses[0].id >= 0 && presses[1].id >= 0 && presses[1].t < dt * 1.5) say('sq_l_two')
     // dents follow their finger, then rise slowly once it lifts (memory foam)
     for (let i = dents.length - 1; i >= 0; i--) {
       const d = dents[i]
@@ -408,51 +462,32 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     }
     let comp = 0
     let areaTarget = 1
-    if (presses.length === 1) {
-      const p = presses[0]
-      const s = p.d * 0.34
-      comp = s
-      const xf = body.cx + (p.x - body.cx) * 0.35
+    if (presses.length > 0) {
+      // one finger or two: the bun flattens onto the table under the fingers and widens; each
+      // finger also sinks its own dent into the top. Two fingers press a little harder.
+      const dm = Math.max(...presses.map((p) => p.d))
+      const s0 = dm * (presses.length > 1 ? 0.37 : 0.34)
+      comp = s0
+      let px0 = 0
+      for (const p of presses) px0 += p.x / presses.length
+      const xf = body.cx + (px0 - body.cx) * 0.35
       const topY = body.cy - 0.9 * R
-      const near = 0.55 + 0.45 * clamp(1 - (p.y - topY) / (1.2 * R), 0, 1)
       for (let i = 0; i < N; i++) {
-        const gx = (hx[i] - p.x) / (0.9 * R)
-        const w = Math.exp(-gx * gx)
-        const si = s * (0.62 + 0.38 * w)
+        let w = 0
+        for (const p of presses) {
+          const gx = (hx[i] - p.x) / (0.9 * R)
+          w = Math.max(w, Math.exp(-gx * gx))
+        }
+        const si = s0 * (0.62 + 0.38 * w)
         tx[i] = xf + (hx[i] - xf) * (1 + si * 0.62)
         ty[i] = floor - (floor - hy[i]) * (1 - si)
         const upper = clamp((body.cy - hy[i]) / (0.55 * R), 0, 1)
-        const gd = (hx[i] - p.x) / (0.36 * R)
-        ty[i] += p.d * 0.2 * R * Math.exp(-gd * gd) * upper * near
-        tk[i] = kS + 170 * Math.min(1, p.d * 4)
-      }
-    } else if (presses.length === 2) {
-      const [a, b] = presses
-      let ux = b.x - a.x
-      let uy = b.y - a.y
-      const l = Math.hypot(ux, uy) || 1
-      ux /= l
-      uy /= l
-      const vx = -uy
-      const vy = ux
-      const mx = (a.x + b.x) / 2
-      const my = (a.y + b.y) / 2
-      const dd = (a.d + b.d) / 2
-      const s0 = dd * 0.24 * clamp(l / (0.4 * R), 0.4, 1)
-      comp = s0
-      for (let i = 0; i < N; i++) {
-        const rx = hx[i] - mx
-        const ry = hy[i] - my
-        const au = rx * ux + ry * uy
-        const av = rx * vx + ry * vy
-        // the base stays on the table; the squeeze acts on the body above it
-        const lift = clamp((floor - hy[i]) / (0.45 * R), 0.25, 1)
-        const s = s0 * lift
-        tx[i] = mx + ux * au * (1 - s) + vx * av * (1 + s * 0.7)
-        ty[i] = my + uy * au * (1 - s) + vy * av * (1 + s * 0.7)
-        // vertical growth is anchored on the table, not on the fingers: it rises, it does not sink
-        ty[i] -= Math.max(0, floor - my) * vy * vy * s * 0.7 * 0.5
-        tk[i] = kS + 170 * Math.min(1, dd * 4)
+        for (const p of presses) {
+          const near = 0.55 + 0.45 * clamp(1 - (p.y - topY) / (1.2 * R), 0, 1)
+          const gd = (hx[i] - p.x) / (0.36 * R)
+          ty[i] += p.d * 0.2 * R * Math.exp(-gd * gd) * upper * near
+        }
+        tk[i] = kS + 170 * Math.min(1, dm * 4)
       }
     }
     if (grab) {
@@ -475,9 +510,16 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
         qy *= rr / r
         r = rr
       }
-      // nothing goes through the table
+      // nothing goes through the table, and on a narrow phone the lobe stays on screen (rubbery wall)
       const fy = floor - (body.cy - 0.05 * R)
       if (qy > fy) qy = fy
+      const wall = stage.w / 2 - 16
+      if (Math.abs(qx) > wall - 0.15 * R) {
+        const sg = Math.sign(qx)
+        const over = Math.abs(qx) - (wall - 0.15 * R)
+        qx = sg * (wall - 0.15 * R + 0.15 * R * (1 - Math.exp(-over / (0.15 * R))))
+      }
+      r = Math.hypot(qx, qy)
       dx = qx - ox
       dy = qy - oy
       g.stretch = r / Math.hypot(ox, oy)
@@ -532,10 +574,17 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
       }
       if (!blob.out) {
         blob.tIn += dt
-        if (blob.tIn > 0.9) blob = null
+        if (blob.tIn > 0.9) {
+          seam = { node: blob.node, t: 0 }
+          blob = null
+        }
       }
     }
 
+    if (seam) {
+      seam.t += dt
+      if (seam.t > 1.1) seam = null
+    }
     // face
     faceT += dt
     let next: FaceState = face
@@ -589,7 +638,8 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     bursts++
     hardT = 0
     ev.onBurst(bursts)
-    sfx.burst()
+    sfx.burst(skin)
+    say(skin === 'baozi' ? 'sq_l_soup' : skin === 'tangyuan' ? 'sq_l_sesame' : skin === 'paw' ? 'sq_l_jam' : 'sq_l_custard', undefined, true)
     haptic(25)
   }
 
@@ -599,6 +649,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     const { ctx, w, h, dpr } = stage
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     ctx.drawImage(bg, 0, 0, w, h)
+    if (props) drawSteam(ctx, props.cup.x, props.cup.y, props.cup.w, time)
 
     buildOutline(body.px, body.py)
     let [cx, cy] = centroid()
@@ -615,12 +666,31 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     const hNow = maxY - minY
     cy -= 0.1 * R * (hNow / restH)
 
-    // reshade only when the skin or a dent moved
-    let key = ''
+    // the filling (爆浆): a glossy bulge swelling through a small split, part of the same shaded surface
+    let ooze: Ooze | null = null
+    if (blob) {
+      const i = blob.node
+      const [nx, ny] = nodeNormal(i)
+      let grow: number
+      if (blob.out) {
+        const t = Math.min(1, blob.t / 0.55)
+        grow = 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2) // outBack
+        grow *= 1 + 0.05 * Math.sin(blob.t * 17) * Math.exp(-blob.t * 3)
+      } else {
+        const t = Math.min(1, blob.tIn / 0.9)
+        grow = (1 - t * t * (3 - 2 * t)) * (1 + 0.06 * Math.sin(t * 18) * (1 - t))
+      }
+      const r = 0.27 * R * Math.max(0, grow)
+      if (r > 1) ooze = { x: body.px[i] + nx * r * 0.3, y: body.py[i] + ny * r * 0.3, r, fill: SKINS[skin].fill }
+      blob.r = r
+    }
+
+    // reshade only when the skin, a dent or the filling moved
+    let key = ooze ? `${(ooze.r * 4) | 0};` : ''
     for (let i = 0; i < N; i += 3) key += ((body.px[i] * 4) | 0) + ',' + ((body.py[i] * 4) | 0) + ';'
     for (const d of dents) key += `${(d.x * 2) | 0},${(d.y * 2) | 0},${(d.depth * 300) | 0};`
     if (key !== lastShadeKey) {
-      shader.shade(xs, ys, ND, cx, cy, R, body.floor, dents, MOCHI)
+      shader.shade(xs, ys, ND, cx, cy, R, body.floor, dents, SKINS[skin].body, ooze)
       lastShadeKey = key
     }
 
@@ -646,11 +716,9 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     ctx.scale(hsx * (1 - b * 0.4), hsy * (1 + b))
     ctx.translate(-fx, -fy)
 
-    // the filling comes out from behind the skin edge, so the skin overlaps its base softly
-    if (blob) drawBlob(ctx, 'behind')
-
+    const outline = () => (ooze ? shader.outline(ctx) : bodyPath(ctx))
     // a faint occlusion halo round the silhouette, so the lit side still separates from the sunlit mat
-    bodyPath(ctx)
+    outline()
     ctx.lineJoin = 'round'
     for (const [wd, a] of [[0.07, 0.018], [0.04, 0.024], [0.02, 0.03]] as const) {
       ctx.lineWidth = wd * R
@@ -660,22 +728,23 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
 
     // body
     ctx.save()
-    bodyPath(ctx)
+    outline()
     ctx.clip()
     shader.draw(ctx)
     drawGloss(ctx)
     // fingertip dents: a soft dark core so the press reads even under a thumb
     for (const d of dents) {
       if (d.depth < 0.02) continue
-      const rr = 0.2 * R
+      const rr = 0.16 * R
       const g = ctx.createRadialGradient(d.x + 0.02 * R, d.y + 0.03 * R, 0, d.x, d.y, rr)
-      g.addColorStop(0, `rgba(196,96,100,${0.1 * d.depth * clamp((body.floor - d.y) / R - 0.5, 0, 1)})`)
+      g.addColorStop(0, `rgba(190,88,96,${0.17 * d.depth * clamp((body.floor - d.y) / R - 0.2, 0, 1)})`)
       g.addColorStop(1, 'rgba(196,96,100,0)')
       ctx.fillStyle = g
       ctx.fillRect(d.x - rr, d.y - rr, rr * 2, rr * 2)
     }
-    // face, attached to the skin
+    // skin details (pleats, toe beans), attached to the skin like the face
     const faceInfo = faceFrame(cx, cy)
+    drawSkinDetails(ctx, cx, cy, faceInfo)
     drawFace(ctx, face, faceT, {
       ...faceInfo,
       R,
@@ -685,9 +754,33 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
       E,
       time,
     })
-    ctx.restore()
+    drawSeam(ctx)
+    if (ooze && ooze.r > 0.08 * R) {
+      // wet highlight on the filling
+      const hx = ooze.x - ooze.r * 0.34
+      const hy = ooze.y - ooze.r * 0.4
+      ctx.save()
+      ctx.translate(hx, hy)
+      ctx.rotate(-0.6)
+      ctx.scale(1, 0.55)
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ooze.r * 0.3)
+      g.addColorStop(0, 'rgba(255,255,255,0.95)')
+      g.addColorStop(0.5, 'rgba(255,255,255,0.65)')
+      g.addColorStop(1, 'rgba(255,255,255,0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(0, 0, ooze.r * 0.3, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+      ctx.fillStyle = 'rgba(255,255,255,0.8)'
+      ctx.beginPath()
+      ctx.arc(ooze.x + ooze.r * 0.05, ooze.y - ooze.r * 0.55, ooze.r * 0.06, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    ctx.restore() // body clip
 
-    if (blob) drawBlob(ctx, 'front')
+    if (name) drawFlag(ctx, cx, cy)
+    if (face === 'doze') drawZzz(ctx, cx, cy)
     ctx.restore()
 
     if (statsOn) {
@@ -843,113 +936,240 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     ell(bm + 0.03 * R, fy + 0.004 * R, bh * 1.08, 0.04 * R, '134,56,66', 0.42 * (1 - lift))
   }
 
-  function drawBlob(ctx: CanvasRenderingContext2D, layer: 'behind' | 'front') {
-    const bl = blob!
-    const i = bl.node
-    const nrm = (k: number) => {
-      const a = (k + N - 1) % N
-      const b = (k + 1) % N
-      const nx = body.py[b] - body.py[a]
-      const ny = -(body.px[b] - body.px[a])
-      const l = Math.hypot(nx, ny) || 1
-      return [nx / l, ny / l]
-    }
-    const [nx, ny] = nrm(i)
-    let grow: number
-    if (bl.out) {
-      const t = Math.min(1, bl.t / 0.5)
-      grow = 1 + 2.4 * Math.pow(t - 1, 3) + 1.4 * Math.pow(t - 1, 2) // outBack
-      grow *= 1 + 0.06 * Math.sin(bl.t * 19) * Math.exp(-bl.t * 3)
-    } else {
-      const t = Math.min(1, bl.tIn / 0.9)
-      grow = (1 - t * t) * (1 + 0.08 * Math.sin(t * 20))
-    }
-    grow = Math.max(0, grow)
-    const r = 0.27 * R * grow
-    if (r < 0.5) return
-    // the split in the skin: two points either side of the node
-    const cx = body.px[i] + nx * r * 0.45
-    const cy = body.py[i] + ny * r * 0.45
-    const custard = (path: () => void) => {
-      const g = ctx.createRadialGradient(cx - r * 0.35, cy - r * 0.45, r * 0.05, cx, cy, r * 1.25)
-      g.addColorStop(0, '#FFF3B8')
-      g.addColorStop(0.35, '#FFD963')
-      g.addColorStop(0.85, '#F2B23C')
-      g.addColorStop(1, '#E39C2E')
-      ctx.fillStyle = g
-      path()
-      ctx.fill()
-    }
-    if (layer === 'behind') {
-      custard(() => {
-        ctx.beginPath()
-        const M = 28
-        for (let k = 0; k <= M; k++) {
-          const th = (k / M) * Math.PI * 2
-          const wob = 1 + 0.05 * Math.sin(th * 3 + bl.t * 7) + 0.03 * Math.sin(th * 5 - bl.t * 11)
-          const x = cx + Math.cos(th) * r * wob
-          const y = cy + Math.sin(th) * r * wob
-          if (k) ctx.lineTo(x, y)
-          else ctx.moveTo(x, y)
+  /** A point given relative to the rest bun (units of R from its centre), carried onto the current skin. */
+  function skinAt(rx: number, ry: number, cx: number, cy: number): [number, number] {
+    const x = body.cx + rx * R - restCX
+    const y = body.cy + ry * R - restCY
+    const th = Math.atan2(y, x)
+    let fb = ((th + Math.PI) / (Math.PI * 2)) * 512
+    fb = ((fb % 512) + 512) % 512
+    const b0 = fb | 0
+    const rr0 = restRad[b0] + (restRad[(b0 + 1) % 512] - restRad[b0]) * (fb - b0)
+    const sr = Math.hypot(x, y) / rr0
+    const rn = shader.radAt(th)
+    return [cx + Math.cos(th) * sr * rn, cy + Math.sin(th) * sr * rn]
+  }
+
+  type Frame = { m11: number; m12: number; m21: number; m22: number }
+  function drawSkinDetails(ctx: CanvasRenderingContext2D, cx: number, cy: number, F: Frame & { x: number; y: number }) {
+    if (skin === 'baozi') {
+      // pleats gathered into a twisted knot on top
+      const kx = 0,
+        ky = -0.6
+      const n = 13
+      ctx.save()
+      ctx.lineCap = 'round'
+      for (let k = 0; k < n; k++) {
+        const phi = (k / n) * Math.PI * 2 + 0.2
+        const ex = Math.cos(phi) * 0.56
+        const ey = ky + Math.sin(phi) * 0.2
+        const pts: [number, number][] = []
+        for (let j = 0; j <= 6; j++) {
+          const u = j / 6
+          const sw = Math.sin(u * Math.PI) * 0.12
+          const px = kx + (ex - kx) * u - Math.sin(phi) * sw
+          const py = ky + (ey - ky) * u + Math.cos(phi) * sw * 0.35
+          pts.push(skinAt(px, py, cx, cy))
         }
+        const back = Math.sin(phi) < 0
+        ctx.strokeStyle = back ? 'rgba(170,130,96,0.22)' : 'rgba(170,130,96,0.4)'
+        ctx.lineWidth = Math.max(1, 0.016 * R)
+        ctx.beginPath()
+        pts.forEach(([x, y], j) => (j ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
+        ctx.stroke()
+        ctx.strokeStyle = 'rgba(255,255,255,0.55)'
+        ctx.lineWidth = Math.max(0.8, 0.01 * R)
+        ctx.beginPath()
+        pts.forEach(([x, y], j) => (j ? ctx.lineTo(x - 0.012 * R, y - 0.01 * R) : ctx.moveTo(x - 0.012 * R, y - 0.01 * R)))
+        ctx.stroke()
+      }
+      const [qx, qy] = skinAt(kx, ky, cx, cy)
+      const g = ctx.createRadialGradient(qx - 0.02 * R, qy - 0.02 * R, 0, qx, qy, 0.09 * R)
+      g.addColorStop(0, 'rgba(255,255,255,0.9)')
+      g.addColorStop(0.5, 'rgba(236,214,186,0.9)')
+      g.addColorStop(1, 'rgba(200,170,136,0)')
+      ctx.fillStyle = g
+      ctx.beginPath()
+      ctx.arc(qx, qy, 0.09 * R, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.restore()
+    } else if (skin === 'paw') {
+      const pad = (x: number, y: number, rx: number, ry: number, path?: () => void) => {
+        ctx.save()
+        ctx.translate(x, y)
+        ctx.transform(F.m11, F.m21, F.m12, F.m22, 0, 0)
+        const g = ctx.createRadialGradient(-rx * 0.35, -ry * 0.4, 0, 0, 0, Math.max(rx, ry) * 1.1)
+        g.addColorStop(0, '#FFD0DA')
+        g.addColorStop(0.55, '#FBA3B6')
+        g.addColorStop(1, '#EE8098')
+        ctx.fillStyle = g
+        ctx.beginPath()
+        if (path) path()
+        else ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'
+        ctx.beginPath()
+        ctx.ellipse(-rx * 0.35, -ry * 0.45, rx * 0.28, ry * 0.16, -0.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+      for (const [bx, by, rot] of [[-0.43, -0.3, 0.5], [-0.16, -0.5, 0.15], [0.16, -0.5, -0.15], [0.43, -0.3, -0.5]]) {
+        const [x, y] = skinAt(bx, by, cx, cy)
+        pad(x, y, 0.105 * R, 0.13 * R)
+        void rot
+      }
+      // the main pad, the face sits on it
+      const w = 0.36 * R,
+        h = 0.26 * R
+      pad(F.x, F.y + 0.03 * R, w, h, () => {
+        ctx.moveTo(0, -h)
+        ctx.bezierCurveTo(w * 0.7, -h, w, -h * 0.1, w, h * 0.35)
+        ctx.bezierCurveTo(w, h * 1.05, w * 0.35, h, 0, h * 0.78)
+        ctx.bezierCurveTo(-w * 0.35, h, -w, h * 1.05, -w, h * 0.35)
+        ctx.bezierCurveTo(-w, -h * 0.1, -w * 0.7, -h, 0, -h)
         ctx.closePath()
       })
-      ctx.fillStyle = 'rgba(255,255,255,0.9)'
-      ctx.beginPath()
-      ctx.ellipse(cx + nx * r * 0.3 - r * 0.22, cy + ny * r * 0.3 - r * 0.28, r * 0.2, r * 0.1, -0.6, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = 'rgba(255,255,255,0.7)'
-      ctx.beginPath()
-      ctx.arc(cx + nx * r * 0.3 + r * 0.1, cy + ny * r * 0.3 - r * 0.42, r * 0.045, 0, Math.PI * 2)
-      ctx.fill()
-      return
     }
+  }
+
+  /** The name on a paper flag, on a toothpick stuck in the bun. */
+  function drawFlag(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+    const [ax, ay] = skinAt(0.3, -0.72, cx, cy)
+    if (!flag.init) {
+      flag.px = ax
+      flag.py = ay
+      flag.init = true
+    }
+    // sway: the stick lags the skin's motion and springs back
+    const vx = ax - flag.px
+    flag.px = ax
+    flag.py = ay
+    flag.v += (-flag.a * 160 - flag.v * 9) / 60 - vx * 0.02
+    flag.a += flag.v / 60
+    let nx = ax - cx,
+      ny = ay - cy
+    const nl = Math.hypot(nx, ny) || 1
+    nx /= nl
+    ny /= nl
+    let dx = nx * 0.35,
+      dy = ny * 0.35 - 0.65
+    const dl = Math.hypot(dx, dy) || 1
+    dx /= dl
+    dy /= dl
+    const ca = Math.cos(flag.a),
+      sa = Math.sin(flag.a)
+    ;[dx, dy] = [dx * ca - dy * sa, dx * sa + dy * ca]
+    const L = 0.72 * R
+    const tx = ax + dx * L,
+      ty = ay + dy * L
     ctx.save()
-    // a smear of filling on the skin round the split
-    ctx.save()
-    bodyPath(ctx)
-    ctx.clip()
-    const sm = ctx.createRadialGradient(body.px[i], body.py[i], 0, body.px[i], body.py[i], r * 0.9)
-    sm.addColorStop(0, 'rgba(250,196,80,0.75)')
-    sm.addColorStop(0.5, 'rgba(250,196,80,0.3)')
-    sm.addColorStop(1, 'rgba(250,196,80,0)')
-    ctx.fillStyle = sm
-    ctx.fillRect(body.px[i] - r, body.py[i] - r, r * 2, r * 2)
+    ctx.lineCap = 'round'
+    // dimple where it goes in
+    ctx.fillStyle = 'rgba(170,90,90,0.3)'
+    ctx.beginPath()
+    ctx.ellipse(ax, ay + 0.005 * R, 0.035 * R, 0.014 * R, 0, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.strokeStyle = '#D8B27E'
+    ctx.lineWidth = Math.max(2, 0.026 * R)
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(tx, ty)
+    ctx.stroke()
+    ctx.strokeStyle = 'rgba(255,240,214,0.9)'
+    ctx.lineWidth = Math.max(0.8, 0.008 * R)
+    ctx.beginPath()
+    ctx.moveTo(ax - 0.006 * R, ay)
+    ctx.lineTo(tx - 0.006 * R, ty)
+    ctx.stroke()
+    // the paper flag
+    const fs = Math.max(11, 0.14 * R)
+    ctx.font = `600 ${fs}px ${HAND}`
+    const tw = Math.min(ctx.measureText(name).width, 1.6 * R)
+    const fw = tw + 0.18 * R
+    const fh = fs * 1.6
+    const ang = Math.atan2(dy, dx) + Math.PI / 2
+    ctx.translate(tx, ty)
+    ctx.rotate(ang)
+    const wave = Math.sin(time * 2.2) * 0.02 * R + flag.a * 0.3 * R
+    const flagPath = (ox: number, oy: number) => {
+      ctx.beginPath()
+      ctx.moveTo(ox, oy + 0.02 * R)
+      ctx.bezierCurveTo(ox + fw * 0.35, oy + 0.02 * R - wave, ox + fw * 0.65, oy + 0.02 * R + wave, ox + fw, oy + 0.02 * R)
+      ctx.lineTo(ox + fw, oy + 0.02 * R + fh)
+      ctx.bezierCurveTo(ox + fw * 0.65, oy + 0.02 * R + fh + wave, ox + fw * 0.35, oy + 0.02 * R + fh - wave, ox, oy + 0.02 * R + fh)
+      ctx.closePath()
+    }
+    ctx.fillStyle = 'rgba(150,70,90,0.16)'
+    flagPath(0.03 * R, 0.04 * R)
+    ctx.fill()
+    const pg = ctx.createLinearGradient(0, 0, fw, 0)
+    pg.addColorStop(0, '#FFFFFF')
+    pg.addColorStop(1, '#F6EEE8')
+    ctx.fillStyle = pg
+    flagPath(0, 0)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(200,120,140,0.35)'
+    ctx.lineWidth = 1
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(64,72,140,0.9)'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(name, fw / 2 + 0.01 * R, 0.02 * R + fh / 2, tw)
     ctx.restore()
-    // a drip running down the outside of the bun along its contour
-    const dripLen = bl.out ? Math.min(1, Math.max(0, (bl.t - 0.25) / 1.3)) : Math.max(0, 1 - bl.tIn / 0.35)
-    if (dripLen > 0.02) {
-      const side = nx >= 0 ? 1 : -1
-      const steps = 1 + dripLen * 4.5
-      const pts: [number, number][] = []
-      for (let k = 0; k <= 12; k++) {
-        const f = 1.2 + (k / 12) * (steps - 1)
-        const j0 = Math.floor(f)
-        const ff = f - j0
-        const j1 = (i + side * j0 + N * 4) % N
-        const j2 = (i + side * (j0 + 1) + N * 4) % N
-        const [n1x, n1y] = nrm(j1)
-        const x = body.px[j1] + (body.px[j2] - body.px[j1]) * ff + n1x * 0.045 * R
-        const y = body.py[j1] + (body.py[j2] - body.py[j1]) * ff + n1y * 0.045 * R
-        pts.push([x, y])
-      }
-      const [ex, ey] = pts[pts.length - 1]
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.strokeStyle = '#EFB13E'
-      ctx.lineWidth = 0.05 * R * Math.max(0.4, grow)
-      ctx.beginPath()
-      pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y)))
-      ctx.stroke()
-      ctx.fillStyle = '#EFB13E'
-      ctx.beginPath()
-      ctx.arc(ex, ey + 0.012 * R, 0.062 * R * (0.5 + 0.5 * dripLen), 0, Math.PI * 2)
-      ctx.fill()
-      ctx.fillStyle = 'rgba(255,246,200,0.9)'
-      ctx.beginPath()
-      ctx.arc(ex - 0.022 * R, ey - 0.006 * R, 0.016 * R, 0, Math.PI * 2)
-      ctx.fill()
+  }
+
+  /** Dozing: three small z's float up from the top of the bun. */
+  function drawZzz(ctx: CanvasRenderingContext2D, cx: number, cy: number) {
+    const [x0, y0] = skinAt(0.45, -0.7, cx, cy)
+    ctx.save()
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    for (let k = 0; k < 3; k++) {
+      const u = (time * 0.35 + k / 3) % 1
+      const a = Math.sin(u * Math.PI) * 0.75
+      const size = (0.1 + 0.08 * u) * R
+      ctx.font = `700 ${size}px ui-rounded, "SF Pro Rounded", system-ui, sans-serif`
+      ctx.fillStyle = `rgba(178,104,128,${a})`
+      ctx.fillText('z', x0 + u * 0.32 * R + Math.sin(u * 6 + k) * 0.03 * R, y0 - u * 0.55 * R)
     }
+    ctx.restore()
+  }
+
+  function nodeNormal(i: number): [number, number] {
+    const a = (i + N - 1) % N
+    const b = (i + 1) % N
+    const nx = body.py[b] - body.py[a]
+    const ny = -(body.px[b] - body.px[a])
+    const l = Math.hypot(nx, ny) || 1
+    return [nx / l, ny / l]
+  }
+
+  /** The split, healing: a short pressed crease that fades after the filling is sucked back in. */
+  function drawSeam(ctx: CanvasRenderingContext2D) {
+    if (!seam) return
+    const a = 1 - seam.t / 1.1
+    if (a <= 0) return
+    const i = seam.node
+    const [nx, ny] = nodeNormal(i)
+    const tx = -ny
+    const ty = nx
+    const x = body.px[i] - nx * 0.05 * R
+    const y = body.py[i] - ny * 0.05 * R
+    const l = 0.09 * R * (0.6 + 0.4 * a)
+    ctx.save()
+    ctx.lineCap = 'round'
+    ctx.strokeStyle = `rgba(176,96,96,${0.45 * a})`
+    ctx.lineWidth = Math.max(1.2, 0.014 * R)
+    ctx.beginPath()
+    ctx.moveTo(x - tx * l, y - ty * l)
+    ctx.quadraticCurveTo(x - nx * 0.02 * R, y - ny * 0.02 * R, x + tx * l, y + ty * l)
+    ctx.stroke()
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 * a})`
+    ctx.lineWidth = Math.max(1, 0.01 * R)
+    ctx.beginPath()
+    ctx.moveTo(x - tx * l * 0.8 - nx * 0.012 * R, y - ty * l * 0.8 - ny * 0.012 * R)
+    ctx.quadraticCurveTo(x - nx * 0.035 * R, y - ny * 0.035 * R, x + tx * l * 0.8 - nx * 0.012 * R, y + ty * l * 0.8 - ny * 0.012 * R)
+    ctx.stroke()
     ctx.restore()
   }
 
@@ -976,6 +1196,9 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     },
     get debug() {
       return { ptrs: ptrs.size, disp: body.rmsDisp(), dents: dents.length, blob: !!blob }
+    },
+    get coarse() {
+      return coarse
     },
     get workMs() {
       return workMs
@@ -1006,8 +1229,8 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
         run(poseT || 0.5)
       }
     } else if (pose === 'pinch') {
-      const [ax, ay] = P(-0.55, 0.05)
-      const [bx, by] = P(0.55, 0.05)
+      const [ax, ay] = P(-0.38, -0.4)
+      const [bx, by] = P(0.38, -0.4)
       down(1, ax, ay)
       down(2, bx, by)
       run(poseT || 0.8)
@@ -1033,9 +1256,33 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
   const stop = runLoop((dt) => {
     if (!freeze) update(dt)
     render()
+    // auto-degrade: if frames stay slow while it is being squeezed, shade on a coarser grid
+    frameEMA = frameEMA * 0.9 + dt * 1000 * 0.1
+    if (!coarse && !freeze && ptrs.size > 0 && frameEMA > 21) {
+      slowT += dt
+      if (slowT > 1.5) {
+        coarse = true
+        shader.layout(body.cx, body.cy, R, body.floor, 1.5)
+        lastShadeKey = ''
+      }
+    } else slowT = Math.max(0, slowT - dt)
   })
 
   return {
+    setSkin(sk: SkinId) {
+      skin = sk
+      lastShadeKey = ''
+    },
+    setName(n: string) {
+      name = n
+      buildBg(stage.w, stage.h, stage.dpr)
+    },
+    setMuted(m: boolean) {
+      sfx.setMuted(m)
+    },
+    lineY() {
+      return body.floor + 0.22 * R
+    },
     dispose() {
       stop()
       disposeCanvas()

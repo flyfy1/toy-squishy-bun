@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MoreMenu, pillClass } from './components/MoreMenu'
 import { applyMeta, locale, t, type Key } from './i18n'
 import { startAnalytics, track } from './analytics'
-import { SKINS, type Skin, bunFromUrl, parseName, stats, syncBunToUrl } from './share'
+import { SKINS, type Skin, bunFromUrl, parseName, stats, syncBunToUrl, trackLanding } from './share'
 import { Hint } from './components/Hint'
 import { IconSquish } from './components/Icons'
 import { startGame, type GameApi } from './game'
@@ -74,7 +74,7 @@ export default function App() {
     startAnalytics('squish')
     stats.name = initial.name
     stats.skin = initial.skin
-    if (initial.name || initial.skin !== 'mochi') track('shared_open', { skin: initial.skin })
+    trackLanding({ skin: initial.skin })
     let n = 0
     let maxes = 0
     let lineId = 0

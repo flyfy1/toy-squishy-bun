@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { MoreMenu, pillClass } from './components/MoreMenu'
 import { applyMeta, locale, t, type Key } from './i18n'
 import { startAnalytics, track } from './analytics'
-import { SKINS, type Skin, bunFromUrl, parseName, stats, syncBunToUrl, trackLanding } from './share'
+import { SKINS, type Skin, bunFromUrl, landing, live, openSheet, parseName, sharePeak, stats, store, syncBunToUrl, trackLanding } from './share'
+import { Tag } from './components/Tag'
 import { Hint } from './components/Hint'
 import { IconSquish } from './components/Icons'
 import { startGame, type GameApi } from './game'
@@ -71,6 +72,8 @@ export default function App() {
 
   useEffect(() => {
     applyMeta('squish')
+    // a link with something in it: the title (what WeChat shows when it is forwarded) says so
+    if (landing.recipient) document.title = initial.name ? t('sq_tag', { name: parseName(initial.name) }) : t('sq_tag0')
     startAnalytics('squish')
     stats.name = initial.name
     stats.skin = initial.skin
@@ -94,7 +97,13 @@ export default function App() {
         },
         onMax() {
           maxes++
-          if (maxes === 1) track('max_squeeze')
+          stats.k = maxes
+          // the peak: the bun gives up; the slip comes as it rises again (the forgiveness is the joke)
+          const peak = { snap: null, data: { n, k: maxes } }
+          if (maxes === 1) {
+            track('max_squeeze')
+            sharePeak('squish', peak)
+          } else store.peak = peak
         },
         onStretch(pct) {
           track('stretch_max', { pct: Math.min(200, Math.round(pct / 10) * 10) })
@@ -137,6 +146,23 @@ export default function App() {
     if (clean) gaTimer.current = window.setTimeout(() => track('name_set', { len: clean.length }), 1500)
   }
 
+  // a recipient answering: the name box opens empty, with its own placeholder; done typing, the sheet comes back
+  const [ph, setPh] = useState('')
+  live.reply = () => {
+    onName('')
+    setPh(t('sq_reply_ph'))
+    setPanel(true)
+  }
+  const sendReply = () => {
+    if (!ph || !parseName(name)) return
+    setPh('')
+    setPanel(false)
+    window.clearTimeout(nameTimer.current)
+    api.current?.setName(parseName(name))
+    syncBunToUrl(parseName(name), skin)
+    openSheet('reply')
+  }
+
   const pickSkin = (s: Skin) => {
     setSkin(s)
     stats.skin = s
@@ -168,6 +194,13 @@ export default function App() {
       </div>
       <Line k={line} y={lineY} />
       <Hint text={t('hint_squish')} hidden={touched || !!line} toy="squish" />
+      {landing.recipient && (
+        <Tag
+          text={initial.name ? t('sq_tag', { name: parseName(initial.name) }) : t('sq_tag0')}
+          className="top-[calc(max(1.25rem,5vh)+4.6rem)]"
+          paper="bg-[#FFFBF3] text-[#6B4A2E] font-medium"
+        />
+      )}
       {chip && skin === 'paw' && (
         <a
           href="https://purr.integ.life"
@@ -187,7 +220,9 @@ export default function App() {
             <input
               value={name}
               maxLength={12}
-              placeholder={t('sq_name_ph')}
+              autoFocus={!!ph}
+              onBlur={sendReply}
+              placeholder={ph || t('sq_name_ph')}
               enterKeyHint="done"
               onChange={(e) => onName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}

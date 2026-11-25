@@ -2,6 +2,9 @@
 // The text every toy shares (names for the More menu, Share, About) lives in i18n.ts.
 
 const en = {
+  sq_tag: "Someone handed you “{name}”.",
+  sq_tag0: "Someone handed you a bun.",
+  sq_reply_ph: "Name it",
   desc_squish: "A glossy squishy bun with a tiny face. Press it, stretch it, squash it flat and watch it slowly rise back. Hold it hard and it gives up, dizzy. A tiny stress-relief toy, no sign-up.",
   hint_squish: "Press and hold to squeeze · drag the edge to stretch",
   share_squish: "🍡 Squeeze a soft mochi bun. It slowly forgives you:",
@@ -31,6 +34,9 @@ const en = {
 }
 
 const zhCN: typeof en = {
+  sq_tag: "有人把「{name}」交给你了",
+  sq_tag0: "有人把一只团子交给你了",
+  sq_reply_ph: "给它起个名字",
   desc_squish: "一只亮晶晶、软乎乎的团子，脸很小。捏它、拉它、把它压扁，再看它慢慢回弹。捏太狠它会晕给你看。打开即玩的解压小玩具。",
   hint_squish: "按住就是捏 · 拖边缘能拉长",
   share_squish: "🍡 捏一只软乎乎的团子，它会慢慢原谅你：",
@@ -60,6 +66,9 @@ const zhCN: typeof en = {
 }
 
 const es: typeof en = {
+  sq_tag: "Alguien te ha dejado a «{name}».",
+  sq_tag0: "Alguien te ha dejado un bollo.",
+  sq_reply_ph: "Ponle nombre",
   desc_squish: "Un bollito blandito y brillante con una carita. Apriétalo, estíralo, aplástalo y mira cómo vuelve a subir despacio. Si aprietas demasiado, se marea. Un juguete antiestrés, sin registro.",
   hint_squish: "Mantén pulsado para apretar · arrastra el borde para estirar",
   share_squish: "🍡 Aprieta un bollito de mochi. Te perdona despacio:",
@@ -89,6 +98,9 @@ const es: typeof en = {
 }
 
 const fr: typeof en = {
+  sq_tag: "Quelqu’un vous a confié « {name} ».",
+  sq_tag0: "Quelqu’un vous a confié une brioche.",
+  sq_reply_ph: "Donnez-lui un nom",
   desc_squish: "Un petit mochi brillant et tout mou, avec une petite tête. Presse-le, étire-le, écrase-le et regarde-le remonter lentement. Serre trop fort et il a la tête qui tourne. Un petit jouet anti-stress, sans inscription.",
   hint_squish: "Appuie longtemps pour serrer · tire le bord pour étirer",
   share_squish: "🍡 Écrase un petit mochi tout mou. Il te pardonne lentement :",
@@ -118,6 +130,9 @@ const fr: typeof en = {
 }
 
 const ja: typeof en = {
+  sq_tag: "「{name}」を託されました",
+  sq_tag0: "団子を一個託されました",
+  sq_reply_ph: "名前をつけて",
   desc_squish: "小さな顔のついた、つやつやもちもちのおまんじゅう。おして、のばして、ぺちゃんこにすると、ゆっくり元に戻ります。強くにぎりすぎると目を回します。登録不要のストレス解消おもちゃ。",
   hint_squish: "長押しでにぎにぎ · ふちをドラッグでのびーる",
   share_squish: "🍡 もちもちのおまんじゅうをにぎろう。ゆっくり許してくれる：",

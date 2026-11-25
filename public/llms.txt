@@ -44,7 +44,7 @@ Yes. The rubbery creak, the soft release, the wheeze and the wake-up boing are s
 English, 简体中文 (Simplified Chinese), Español, Français and 日本語 (Japanese). The language is picked automatically from your browser settings; any other language falls back to English.
 
 **Who made it?**
-Integ Life (integ.life). Squishy Bun is one of seven small stress-relief toys, together with Charge Burst, Void Harvest, Glass Smash, Chain Pop, Knock on Wood, Lap Cat. More games are at games.integ.life.
+Integ Life (integ.life). Squishy Bun is one of eight small stress-relief toys, together with Charge Burst, Void Harvest, Glass Smash, Chain Pop, Knock on Wood, Lap Cat, Scratch That. More games are at games.integ.life.
 
 **Is any personal data collected?**
 No account and no personal data. At most, anonymous usage statistics (page views and play counts) are collected.
@@ -57,4 +57,5 @@ No account and no personal data. At most, anonymous usage statistics (page views
 - [Chain Pop](https://pop.integ.life/): A sheet of parcel bubble wrap that never runs out. One bubble refuses to pop.
 - [Knock on Wood](https://knock.integ.life/): Tap a wooden fish. Merit +1.
 - [Lap Cat](https://purr.integ.life/): Pet a soft, purring cat on your screen. Mind the belly.
+- [Scratch That](https://scratch.integ.life/): Scratch the silver off a card. Win a nap.
 - [Integ Games](https://games.integ.life/): more browser games

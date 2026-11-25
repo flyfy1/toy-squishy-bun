@@ -113,9 +113,11 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
 
   const { stage, dispose: disposeCanvas } = setupCanvas(canvas, (s) => {
     // portrait phones are width-limited: a slightly bigger bun (the 1.6 R stretch still fits)
-    R = Math.min(s.w * 0.35, s.h * 0.26)
+    // ?og=1: the 1200×630 share card, bun bigger and lower
+    const og = new URLSearchParams(location.search).get('og') === '1'
+    R = og ? s.h * 0.33 : Math.min(s.w * 0.35, s.h * 0.26)
     const cx = s.w / 2
-    const cy = s.h * 0.52
+    const cy = s.h * (og ? 0.6 : 0.52)
     body.layout(cx, cy, R)
     shader.layout(cx, cy, R, body.floor, coarse ? 1.5 : 1)
     // rest centroid and the face anchor in polar coordinates of the rest silhouette

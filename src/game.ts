@@ -62,6 +62,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
   const ys = new Float32Array(ND)
   const dents: (Dent & { v: number; target: number; id: number })[] = []
   const ptrs = new Map<number, Ptr>()
+  const ghosts: Ptr[] = []
   let blob: Blob | null = null
   let R = 100
   let started = false
@@ -313,6 +314,8 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
       dd.target = 0
       dd.id = -1
     }
+    // slow rise: a released press keeps holding the shape and lets go like memory foam
+    if (p.mode === 'press' && p.d > 0.05) ghosts.push({ ...p, id: -1 })
     const counted = (p.mode === 'press' && p.dMax > 0.15) || (p.mode === 'grab' && p.stretch > 1.12)
     if (counted) {
       squeezes++
@@ -369,6 +372,13 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
         presses.push(p)
       } else if (!grab) grab = p
     }
+    for (let i = ghosts.length - 1; i >= 0; i--) {
+      ghosts[i].d *= Math.exp(-dt / 0.62)
+      if (ghosts[i].d < 0.01) ghosts.splice(i, 1)
+    }
+    // real fingers first; a released press only shapes the bun while nothing else does
+    if (presses.length === 0 && !grab && ghosts.length) presses.push(ghosts[ghosts.length - 1])
+    else ghosts.length = 0
     presses = presses.slice(0, 2)
     // dents follow their finger, then rise slowly once it lifts (memory foam)
     for (let i = dents.length - 1; i >= 0; i--) {
@@ -495,7 +505,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
     // deformation energy → face state
     const disp = body.rmsDisp()
     let press = 0
-    for (const p of presses) press = Math.max(press, p.d)
+    for (const p of presses) if (p.id >= 0) press = Math.max(press, p.d)
     const eTarget = clamp(Math.max(disp / 0.26, press * 0.92 * (presses.length > 1 ? 1.08 : 1), grab ? (grab.stretch - 1) / 0.75 : 0), 0, 1)
     E += (eTarget - E) * Math.min(1, dt * 10)
     if (E > 0.7 && ptrs.size > 0) hardT += dt
@@ -542,7 +552,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents): GameApi {
       ev.onFace(face)
     }
     // blinks
-    if (face === 'calm') {
+    if (face === 'calm' && !freeze) {
       nextBlink -= dt
       if (nextBlink < 0) {
         blink = 0.16

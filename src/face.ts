@@ -150,6 +150,35 @@ export function drawFace(ctx: CanvasRenderingContext2D, state: FaceState, t: num
     ctx.restore()
   }
 
+  // sweat drop (dizzy): slides down the cheek, then starts again
+  if (state === 'dizzy') {
+    const k = (t * 0.6) % 1
+    const sx = 0.34
+    const sy = -0.2 + k * 0.1
+    const a = Math.min(1, k * 6) * Math.min(1, (1 - k) * 5)
+    ctx.save()
+    ctx.globalAlpha = a
+    ctx.translate(sx, sy)
+    const g = ctx.createLinearGradient(0, -0.07, 0, 0.05)
+    g.addColorStop(0, '#DDF3FF')
+    g.addColorStop(1, '#8CCBF2')
+    ctx.fillStyle = g
+    ctx.beginPath()
+    ctx.moveTo(0, -0.075)
+    ctx.bezierCurveTo(0.018, -0.035, 0.042, -0.005, 0.042, 0.018)
+    ctx.arc(0, 0.018, 0.042, 0, Math.PI)
+    ctx.bezierCurveTo(-0.042, -0.005, -0.018, -0.035, 0, -0.075)
+    ctx.fill()
+    ctx.strokeStyle = 'rgba(80,140,190,0.55)'
+    ctx.lineWidth = Math.max(1 * px, 0.008)
+    ctx.stroke()
+    ctx.fillStyle = 'rgba(255,255,255,0.9)'
+    ctx.beginPath()
+    ctx.ellipse(-0.014, 0.012, 0.009, 0.016, 0.3, 0, Math.PI * 2)
+    ctx.fill()
+    ctx.restore()
+  }
+
   // mouth
   ctx.lineWidth = Math.max(1.3 * px, 0.015)
   ctx.strokeStyle = INK

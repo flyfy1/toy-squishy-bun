@@ -1,6 +1,6 @@
 // Squish sounds, all synthesised (design 3 "Audio"): a rubbery creak that follows the
-// compression rate, a soft "pff" on release, a wet squelch for the burst, a slurp when the
-// filling goes back in, a small boing when it wakes up.
+// compression rate, a soft "pff" on release, a squeaky wheeze when it gives up, a small
+// boing when it wakes up.
 import { audio } from './engine/AudioEngine'
 
 class Sfx {
@@ -105,24 +105,16 @@ class Sfx {
     this.burstNoise(0.08, 0.05, 'lowpass', 1200, 300, 0.8)
   }
 
-  /** Wet squelch: three quick pitch-dropping blips over a band-passed splat. Soup is wetter and lower. */
-  burst(kind = 'mochi') {
-    const k = kind === 'baozi' ? 0.8 : kind === 'tangyuan' ? 0.9 : 1
-    this.blip(400 * k, 260 * k, 0.07, 0.16)
-    this.blip(330 * k, 200 * k, 0.07, 0.14, 0.06)
-    this.blip(260 * k, 150 * k, 0.09, 0.12, 0.12)
-    this.burstNoise(0.28, 0.16, 'bandpass', 900 * k, 250, kind === 'baozi' ? 3 : 1.6)
-    if (kind === 'baozi') this.burstNoise(0.4, 0.06, 'bandpass', 2400, 700, 6, 0.1)
+  /** Giving up under a long hard squeeze: a falling squeaky-toy wheeze, air escaping. */
+  wheeze() {
+    this.blip(760, 380, 0.32, 0.07)
+    this.blip(520, 300, 0.2, 0.05, 0.3)
+    this.burstNoise(0.45, 0.05, 'bandpass', 1800, 600, 2)
   }
 
   setMuted(m: boolean) {
     this.muted = m
     if (this.out && audio.ctx) this.out.gain.setTargetAtTime(m ? 0 : 0.9, audio.ctx.currentTime, 0.02)
-  }
-
-  slurp() {
-    this.blip(180, 520, 0.22, 0.08)
-    this.burstNoise(0.3, 0.06, 'bandpass', 300, 1100, 4)
   }
 
   boing() {

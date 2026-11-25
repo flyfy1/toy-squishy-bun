@@ -2,7 +2,21 @@
 // with live steam and a sticky note in handwriting. Baked into the background except the steam.
 
 export const HAND =
-  '"Bradley Hand", "Segoe Print", "Chalkboard SE", "Marker Felt", "Comic Sans MS", "Kaiti SC", "STKaiti", "KaiTi", "Klee", cursive'
+  '"Caveat Squish", "Bradley Hand", "Segoe Print", "Chalkboard SE", "Marker Felt", "Comic Sans MS", "Kaiti SC", "STKaiti", "KaiTi", "Klee", cursive'
+
+/** Self-hosted Caveat (OFL, Latin only) so the handwriting looks the same on Android; CJK falls back to the system kaiti or sans. */
+export function loadHand(): Promise<void> {
+  try {
+    const f = new FontFace('Caveat Squish', `url(${import.meta.env.BASE_URL}fonts/caveat-600-latin.woff2) format("woff2")`, { weight: '600', display: 'swap' })
+    document.fonts.add(f)
+    return f.load().then(
+      () => undefined,
+      () => undefined,
+    )
+  } catch {
+    return Promise.resolve()
+  }
+}
 
 export interface PropLayout {
   cup: { x: number; y: number; w: number }

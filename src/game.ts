@@ -1,21 +1,22 @@
-// Squishy Bun: one glossy mochi on a pastel desk mat. Press to squeeze, two fingers to pinch,
-// drag the edge to stretch. It slowly rises back; its face judges you; squeeze too hard and
-// the filling pops out (design section 3).
+// Squishy Bun: one glossy mochi on a pastel desk mat. Press to squeeze (one or two fingers),
+// drag the edge to stretch. It slowly rises back; its face judges you; hold it hard and it
+// gives up with dizzy eyes (design section 3; the filling burst was cut).
 import { setupCanvas, runLoop, haptic, clamp } from './engine/juice'
 import { Body, N } from './body'
-import { Shader, MOCHI, BAOZI, TANGYUAN, PAW, CUSTARD, SOUP, SESAME, JAM, type Dent, type Ooze, type Skin } from './shade'
+import { Shader, MOCHI, BAOZI, TANGYUAN, PAW, type Dent, type Skin } from './shade'
 import type { Skin as SkinId } from './share'
 import { drawFace, type FaceState } from './face'
 import { sfx } from './sfx'
 import { t, type Key } from './i18n'
-import { propLayout, drawCup, drawNote, drawSteam, HAND, type PropLayout } from './props'
+import { propLayout, drawCup, drawNote, drawSteam, loadHand, HAND, type PropLayout } from './props'
 
 export type { FaceState }
 
 export interface GameEvents {
   onFirst(): void
   onSqueeze(n: number): void
-  onBurst(n: number): void
+  /** a long hard squeeze reached its payoff */
+  onMax(): void
   onStretch(pct: number): void
   onFace(state: FaceState): void
   /** one line of monologue under the bun */
@@ -46,19 +47,12 @@ interface Ptr {
   stretch: number
 }
 
-interface Blob {
-  node: number
-  t: number
-  r: number
-  out: boolean
-  tIn: number
-}
 
-const SKINS: Record<SkinId, { body: Skin; fill: Skin }> = {
-  mochi: { body: MOCHI, fill: CUSTARD },
-  baozi: { body: BAOZI, fill: SOUP },
-  tangyuan: { body: TANGYUAN, fill: SESAME },
-  paw: { body: PAW, fill: JAM },
+const SKINS: Record<SkinId, { body: Skin }> = {
+  mochi: { body: MOCHI },
+  baozi: { body: BAOZI },
+  tangyuan: { body: TANGYUAN },
+  paw: { body: PAW },
 }
 
 const DENSE = 4 // outline samples per node segment
@@ -80,21 +74,19 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
   const dents: (Dent & { v: number; target: number; id: number })[] = []
   const ptrs = new Map<number, Ptr>()
   const ghosts: Ptr[] = []
-  let blob: Blob | null = null
-  let seam: { node: number; t: number } | null = null
   let skin: SkinId = opts.skin
   let name = opts.name
   let props: PropLayout | null = null
   let lastLine = -10
   let lastLineKey = ''
   let maxReleases = 0
-  let coarse = false // auto-degrade: coarser shading grid
+  let coarse = new URLSearchParams(location.search).get('coarse') === '1' // auto-degrade: coarser shading grid
   let slowT = 0
   let frameEMA = 16
   let R = 100
   let started = false
   let squeezes = 0
-  let bursts = 0
+  let spent = false // the long hard hold already got its payoff this press
   let hardT = 0 // seconds of sustained hard squeeze
   let E = 0
   let face: FaceState = 'calm'
@@ -360,7 +352,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
       else if (squeezes === 200) say('sq_l_m200', undefined, true)
       else if (squeezes === 1) say('sq_l_felt')
       else if (p.mode === 'grab' && p.stretch > 1.3) say('sq_l_taffy')
-      else if (p.mode === 'press' && p.dMax > 0.8 && !blob) {
+      else if (p.mode === 'press' && p.dMax > 0.8 && !spent) {
         maxReleases++
         say(name && maxReleases % 2 === 0 ? 'sq_l_name' : 'sq_l_job', { name })
       } else if (squeezes % 9 === 0) say('sq_l_again')
@@ -370,7 +362,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
       sfx.snap(clamp((p.stretch - 1) / 0.6, 0, 1))
       haptic(12)
     } else if (p.mode === 'press' && p.dMax > 0.1) sfx.release(p.dMax)
-    if (ptrs.size === 0 && (p.dMax > 0.3 || p.stretch > 1.2) && !blob) stareUntil = time + 0.4 + Math.min(0.5, p.dMax * 0.2)
+    if (ptrs.size === 0 && (p.dMax > 0.3 || p.stretch > 1.2)) stareUntil = time + 0.4 + Math.min(0.5, p.dMax * 0.2)
     idleT = 0
   }
 
@@ -552,7 +544,8 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     E += (eTarget - E) * Math.min(1, dt * 10)
     if (E > 0.7 && ptrs.size > 0) hardT += dt
     else hardT = Math.max(0, hardT - dt * 2)
-    if (hardT > 1.2 && !blob) burst()
+    if (ptrs.size === 0) spent = false
+    if (hardT > 1.2 && !spent) giveUp()
 
     // audio + haptics follow the compression rate
     const rate = (comp - prevComp) / Math.max(dt, 1e-3)
@@ -564,32 +557,10 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
       haptic(6)
     }
 
-    // the custard blob
-    if (blob) {
-      blob.t += dt
-      if (blob.out && ptrs.size === 0) {
-        blob.out = false
-        blob.tIn = 0
-        sfx.slurp()
-      }
-      if (!blob.out) {
-        blob.tIn += dt
-        if (blob.tIn > 0.9) {
-          seam = { node: blob.node, t: 0 }
-          blob = null
-        }
-      }
-    }
-
-    if (seam) {
-      seam.t += dt
-      if (seam.t > 1.1) seam = null
-    }
     // face
     faceT += dt
     let next: FaceState = face
     if (forcedFace) next = forcedFace
-    else if (blob) next = 'burst'
     else if (face === 'surprised' && faceT < 0.7) next = 'surprised'
     else if (ptrs.size > 0) next = E > 0.5 ? 'dizzy' : E > 0.25 ? 'wince' : face === 'doze' ? 'doze' : 'calm'
     else if (time < stareUntil) next = 'stare'
@@ -618,29 +589,14 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     breath += dt * ((Math.PI * 2) / (face === 'doze' ? 4.6 : 3.6))
   }
 
-  function burst() {
-    // the filling oozes out of the shoulder away from the finger, where you can see it
-    let fx = body.cx
-    for (const p of ptrs.values()) fx = p.x
-    const target = fx <= body.cx ? -0.09 : -0.41 // angle in turns: upper-right or upper-left shoulder
-    let best = 0
-    let bv = Infinity
-    for (let i = 0; i < N; i++) {
-      const a = Math.atan2(body.hy[i] - body.cy, body.hx[i] - body.cx) / (Math.PI * 2)
-      let e = Math.abs(a - target)
-      e = Math.min(e, 1 - e)
-      if (e < bv) {
-        bv = e
-        best = i
-      }
-    }
-    blob = { node: best, t: 0, r: 0, out: true, tIn: 0 }
-    bursts++
+  /** Max-squeeze payoff: held hard long enough, it gives up — dizzy eyes, a sweat drop, a wheeze, a line. */
+  function giveUp() {
+    spent = true
     hardT = 0
-    ev.onBurst(bursts)
-    sfx.burst(skin)
-    say(skin === 'baozi' ? 'sq_l_soup' : skin === 'tangyuan' ? 'sq_l_sesame' : skin === 'paw' ? 'sq_l_jam' : 'sq_l_custard', undefined, true)
-    haptic(25)
+    ev.onMax()
+    sfx.wheeze()
+    haptic([18, 40, 18])
+    say(name ? 'sq_l_name' : 'sq_l_job', { name }, true)
   }
 
   // ---------- render ----------
@@ -666,31 +622,12 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     const hNow = maxY - minY
     cy -= 0.1 * R * (hNow / restH)
 
-    // the filling (爆浆): a glossy bulge swelling through a small split, part of the same shaded surface
-    let ooze: Ooze | null = null
-    if (blob) {
-      const i = blob.node
-      const [nx, ny] = nodeNormal(i)
-      let grow: number
-      if (blob.out) {
-        const t = Math.min(1, blob.t / 0.55)
-        grow = 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2) // outBack
-        grow *= 1 + 0.05 * Math.sin(blob.t * 17) * Math.exp(-blob.t * 3)
-      } else {
-        const t = Math.min(1, blob.tIn / 0.9)
-        grow = (1 - t * t * (3 - 2 * t)) * (1 + 0.06 * Math.sin(t * 18) * (1 - t))
-      }
-      const r = 0.27 * R * Math.max(0, grow)
-      if (r > 1) ooze = { x: body.px[i] + nx * r * 0.3, y: body.py[i] + ny * r * 0.3, r, fill: SKINS[skin].fill }
-      blob.r = r
-    }
-
-    // reshade only when the skin, a dent or the filling moved
-    let key = ooze ? `${(ooze.r * 4) | 0};` : ''
+    // reshade only when the skin or a dent moved
+    let key = ''
     for (let i = 0; i < N; i += 3) key += ((body.px[i] * 4) | 0) + ',' + ((body.py[i] * 4) | 0) + ';'
     for (const d of dents) key += `${(d.x * 2) | 0},${(d.y * 2) | 0},${(d.depth * 300) | 0};`
     if (key !== lastShadeKey) {
-      shader.shade(xs, ys, ND, cx, cy, R, body.floor, dents, SKINS[skin].body, ooze)
+      shader.shade(xs, ys, ND, cx, cy, R, body.floor, dents, SKINS[skin].body)
       lastShadeKey = key
     }
 
@@ -716,7 +653,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     ctx.scale(hsx * (1 - b * 0.4), hsy * (1 + b))
     ctx.translate(-fx, -fy)
 
-    const outline = () => (ooze ? shader.outline(ctx) : bodyPath(ctx))
+    const outline = () => bodyPath(ctx)
     // a faint occlusion halo round the silhouette, so the lit side still separates from the sunlit mat
     outline()
     ctx.lineJoin = 'round'
@@ -744,7 +681,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     }
     // skin details (pleats, toe beans), attached to the skin like the face
     const faceInfo = faceFrame(cx, cy)
-    drawSkinDetails(ctx, cx, cy, faceInfo)
+    drawSkinDetails(ctx, faceInfo)
     drawFace(ctx, face, faceT, {
       ...faceInfo,
       R,
@@ -754,29 +691,6 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
       E,
       time,
     })
-    drawSeam(ctx)
-    if (ooze && ooze.r > 0.08 * R) {
-      // wet highlight on the filling
-      const hx = ooze.x - ooze.r * 0.34
-      const hy = ooze.y - ooze.r * 0.4
-      ctx.save()
-      ctx.translate(hx, hy)
-      ctx.rotate(-0.6)
-      ctx.scale(1, 0.55)
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, ooze.r * 0.3)
-      g.addColorStop(0, 'rgba(255,255,255,0.95)')
-      g.addColorStop(0.5, 'rgba(255,255,255,0.65)')
-      g.addColorStop(1, 'rgba(255,255,255,0)')
-      ctx.fillStyle = g
-      ctx.beginPath()
-      ctx.arc(0, 0, ooze.r * 0.3, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.restore()
-      ctx.fillStyle = 'rgba(255,255,255,0.8)'
-      ctx.beginPath()
-      ctx.arc(ooze.x + ooze.r * 0.05, ooze.y - ooze.r * 0.55, ooze.r * 0.06, 0, Math.PI * 2)
-      ctx.fill()
-    }
     ctx.restore() // body clip
 
     if (name) drawFlag(ctx, cx, cy)
@@ -951,7 +865,13 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
   }
 
   type Frame = { m11: number; m12: number; m21: number; m22: number }
-  function drawSkinDetails(ctx: CanvasRenderingContext2D, cx: number, cy: number, F: Frame & { x: number; y: number }) {
+  function drawSkinDetails(ctx: CanvasRenderingContext2D, F: Frame & { x: number; y: number }) {
+    // details ride the face's affine frame (rest offsets in units of R from the bun centre)
+    const onFace = (rx: number, ry: number): [number, number] => {
+      const ox = rx * R,
+        oy = (ry - 0.16) * R
+      return [F.x + F.m11 * ox + F.m12 * oy, F.y + F.m21 * ox + F.m22 * oy]
+    }
     if (skin === 'baozi') {
       // pleats gathered into a twisted knot on top
       const kx = 0,
@@ -969,7 +889,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
           const sw = Math.sin(u * Math.PI) * 0.12
           const px = kx + (ex - kx) * u - Math.sin(phi) * sw
           const py = ky + (ey - ky) * u + Math.cos(phi) * sw * 0.35
-          pts.push(skinAt(px, py, cx, cy))
+          pts.push(onFace(px, py))
         }
         const back = Math.sin(phi) < 0
         ctx.strokeStyle = back ? 'rgba(170,130,96,0.22)' : 'rgba(170,130,96,0.4)'
@@ -983,7 +903,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
         pts.forEach(([x, y], j) => (j ? ctx.lineTo(x - 0.012 * R, y - 0.01 * R) : ctx.moveTo(x - 0.012 * R, y - 0.01 * R)))
         ctx.stroke()
       }
-      const [qx, qy] = skinAt(kx, ky, cx, cy)
+      const [qx, qy] = onFace(kx, ky)
       const g = ctx.createRadialGradient(qx - 0.02 * R, qy - 0.02 * R, 0, qx, qy, 0.09 * R)
       g.addColorStop(0, 'rgba(255,255,255,0.9)')
       g.addColorStop(0.5, 'rgba(236,214,186,0.9)')
@@ -1013,10 +933,10 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
         ctx.fill()
         ctx.restore()
       }
-      for (const [bx, by, rot] of [[-0.43, -0.3, 0.5], [-0.16, -0.5, 0.15], [0.16, -0.5, -0.15], [0.43, -0.3, -0.5]]) {
-        const [x, y] = skinAt(bx, by, cx, cy)
-        pad(x, y, 0.105 * R, 0.13 * R)
-        void rot
+      // toe beans ride the face's affine frame, so they keep their spacing when the bun is squashed
+      for (const [bx, by] of [[-0.43, -0.3], [-0.16, -0.5], [0.16, -0.5], [0.43, -0.3]]) {
+        const [x, y] = onFace(bx, by)
+        pad(x, y, 0.1 * R, 0.125 * R)
       }
       // the main pad, the face sits on it
       const w = 0.36 * R,
@@ -1135,44 +1055,6 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     ctx.restore()
   }
 
-  function nodeNormal(i: number): [number, number] {
-    const a = (i + N - 1) % N
-    const b = (i + 1) % N
-    const nx = body.py[b] - body.py[a]
-    const ny = -(body.px[b] - body.px[a])
-    const l = Math.hypot(nx, ny) || 1
-    return [nx / l, ny / l]
-  }
-
-  /** The split, healing: a short pressed crease that fades after the filling is sucked back in. */
-  function drawSeam(ctx: CanvasRenderingContext2D) {
-    if (!seam) return
-    const a = 1 - seam.t / 1.1
-    if (a <= 0) return
-    const i = seam.node
-    const [nx, ny] = nodeNormal(i)
-    const tx = -ny
-    const ty = nx
-    const x = body.px[i] - nx * 0.05 * R
-    const y = body.py[i] - ny * 0.05 * R
-    const l = 0.09 * R * (0.6 + 0.4 * a)
-    ctx.save()
-    ctx.lineCap = 'round'
-    ctx.strokeStyle = `rgba(176,96,96,${0.45 * a})`
-    ctx.lineWidth = Math.max(1.2, 0.014 * R)
-    ctx.beginPath()
-    ctx.moveTo(x - tx * l, y - ty * l)
-    ctx.quadraticCurveTo(x - nx * 0.02 * R, y - ny * 0.02 * R, x + tx * l, y + ty * l)
-    ctx.stroke()
-    ctx.strokeStyle = `rgba(255,255,255,${0.5 * a})`
-    ctx.lineWidth = Math.max(1, 0.01 * R)
-    ctx.beginPath()
-    ctx.moveTo(x - tx * l * 0.8 - nx * 0.012 * R, y - ty * l * 0.8 - ny * 0.012 * R)
-    ctx.quadraticCurveTo(x - nx * 0.035 * R, y - ny * 0.035 * R, x + tx * l * 0.8 - nx * 0.012 * R, y + ty * l * 0.8 - ny * 0.012 * R)
-    ctx.stroke()
-    ctx.restore()
-  }
-
   // ---------- harness (deterministic poses for stills) ----------
   const api = {
     ready: false,
@@ -1195,7 +1077,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
       return face
     },
     get debug() {
-      return { ptrs: ptrs.size, disp: body.rmsDisp(), dents: dents.length, blob: !!blob }
+      return { ptrs: ptrs.size, disp: body.rmsDisp(), dents: dents.length }
     },
     get coarse() {
       return coarse
@@ -1242,7 +1124,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
         run(0.02)
       }
       run(poseT || 0.3)
-    } else if (pose === 'burst') {
+    } else if (pose === 'giveup') {
       const [x, y] = P(0.0, -0.2)
       down(1, x, y)
       run(poseT || 2.6)
@@ -1252,12 +1134,19 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     render()
   }
 
-  api.ready = true
-  const stop = runLoop((dt) => {
+  // the note is baked into the background: redraw it once the handwriting font is in
+  void loadHand().then(() => {
+    buildBg(stage.w, stage.h, stage.dpr)
+    api.ready = true
+  })
+  let lastNow = performance.now()
+  const stop = runLoop((dt, now) => {
     if (!freeze) update(dt)
     render()
     // auto-degrade: if frames stay slow while it is being squeezed, shade on a coarser grid
-    frameEMA = frameEMA * 0.9 + dt * 1000 * 0.1
+    // (real frame time; runLoop clamps dt)
+    frameEMA = frameEMA * 0.9 + Math.min(200, now - lastNow) * 0.1
+    lastNow = now
     if (!coarse && !freeze && ptrs.size > 0 && frameEMA > 21) {
       slowT += dt
       if (slowT > 1.5) {

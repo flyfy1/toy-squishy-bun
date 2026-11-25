@@ -1,8 +1,8 @@
 // The bun's tiny face (design 3): two dot eyes 0.3 R apart, a small "w" mouth and blush.
-// It reacts with increasing betrayal: calm → >_< → spirals and a sweat drop → shock when the
-// filling pops; a flat unimpressed stare after you let go; closed eyes when it dozes.
+// It reacts with increasing betrayal: calm → >_< → spirals and a sweat drop when it gives up;
+// a flat unimpressed stare after you let go; closed eyes when it dozes.
 
-export type FaceState = 'calm' | 'wince' | 'dizzy' | 'burst' | 'stare' | 'doze' | 'surprised'
+export type FaceState = 'calm' | 'wince' | 'dizzy' | 'stare' | 'doze' | 'surprised'
 
 export interface FaceFrame {
   x: number
@@ -34,7 +34,7 @@ export function drawFace(ctx: CanvasRenderingContext2D, state: FaceState, t: num
   ctx.lineJoin = 'round'
 
   // blush: soft ovals, redder when it hurts
-  const hot = state === 'wince' || state === 'dizzy' || state === 'burst' ? 1 : state === 'surprised' ? 0.7 : 0.45
+  const hot = state === 'wince' || state === 'dizzy' ? 1 : state === 'surprised' ? 0.7 : 0.45
   for (const s of [-1, 1]) {
     ctx.save()
     ctx.translate(s * 0.265, 0.085)
@@ -101,20 +101,6 @@ export function drawFace(ctx: CanvasRenderingContext2D, state: FaceState, t: num
           else ctx.lineTo(x, y)
         }
         ctx.stroke()
-        break
-      }
-      case 'burst': {
-        // shock: wide ring eyes with a tiny pupil
-        ctx.lineWidth = lw * 0.9
-        ctx.fillStyle = '#FFFFFF'
-        ctx.beginPath()
-        ctx.arc(0, 0, 0.058, 0, Math.PI * 2)
-        ctx.fill()
-        ctx.stroke()
-        ctx.fillStyle = INK
-        ctx.beginPath()
-        ctx.arc(lx * 0.5, ly * 0.5 + 0.004 * Math.sin(t * 40), 0.019, 0, Math.PI * 2)
-        ctx.fill()
         break
       }
       case 'stare': {
@@ -214,9 +200,6 @@ export function drawFace(ctx: CanvasRenderingContext2D, state: FaceState, t: num
       openMouth(ctx, 0, my + 0.012, 0.026 * wob, 0.022 / wob)
       break
     }
-    case 'burst':
-      openMouth(ctx, 0, my + 0.016, 0.034, 0.038)
-      break
     case 'surprised':
       openMouth(ctx, 0, my + 0.012, 0.02, 0.024)
       break

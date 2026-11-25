@@ -55,7 +55,6 @@ export default function App() {
   const api = useRef<GameApi | null>(null)
   const [touched, setTouched] = useState(false)
   const [count, setCount] = useState(0)
-  const [bursts, setBursts] = useState(0)
   const [bump, setBump] = useState(0)
   const [initial] = useState(() => bunFromUrl())
   const [name, setName] = useState(initial.name)
@@ -77,6 +76,7 @@ export default function App() {
     stats.skin = initial.skin
     if (initial.name || initial.skin !== 'mochi') track('shared_open', { skin: initial.skin })
     let n = 0
+    let maxes = 0
     let lineId = 0
     const g = startGame(
       ref.current!,
@@ -92,9 +92,9 @@ export default function App() {
           setBump((b) => b + 1)
           if (MILESTONES.includes(total)) track('squeeze_milestone', { n: total })
         },
-        onBurst(total) {
-          setBursts(total)
-          track('burst', { n: total })
+        onMax() {
+          maxes++
+          if (maxes === 1) track('max_squeeze')
         },
         onStretch(pct) {
           track('stretch_max', { pct: Math.min(200, Math.round(pct / 10) * 10) })
@@ -103,7 +103,6 @@ export default function App() {
         onLine(key, vars) {
           setLine({ key, vars, id: ++lineId })
           if (api.current) setLineY(api.current.lineY())
-          if (key === 'sq_l_jam') setChip(true)
           window.clearTimeout(lineTimer.current)
           lineTimer.current = window.setTimeout(() => setLine(null), 3600)
         },
@@ -165,7 +164,6 @@ export default function App() {
         </div>
         <div className="mt-0.5 text-[13px] font-medium opacity-70">
           {t('sq_count')}
-          {bursts > 0 ? ` · ${t('sq_bursts', { n: bursts })}` : ''}
         </div>
       </div>
       <Line k={line} y={lineY} />

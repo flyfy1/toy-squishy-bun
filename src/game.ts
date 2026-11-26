@@ -31,6 +31,8 @@ export interface GameApi {
   setMuted(m: boolean): void
   /** css px y where the monologue line goes (under the bun) */
   lineY(): number
+  /** css px of the toothpick flag (where it would stand when the bun has no name) */
+  flagAt(): readonly [number, number]
 }
 
 interface Ptr {
@@ -111,6 +113,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
   const faceRest = { cx: 0, cy: 0, th: 0, s: 0 }
   const restRad = new Float32Array(512)
   const flag = { a: 0, v: 0, px: 0, py: 0, init: false }
+  let flagPt: readonly [number, number] = [innerWidth / 2, innerHeight / 3]
 
   const { stage, dispose: disposeCanvas } = setupCanvas(canvas, (s) => {
     // portrait phones are width-limited: a slightly bigger bun (the 1.6 R stretch still fits)
@@ -697,6 +700,8 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     })
     ctx.restore() // body clip
 
+    const fp = skinAt(0.3, -0.72, cx, cy)
+    flagPt = [fp[0], fp[1] - 0.3 * R]
     if (name) drawFlag(ctx, cx, cy)
     if (face === 'doze') drawZzz(ctx, cx, cy)
     ctx.restore()
@@ -1176,6 +1181,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     lineY() {
       return body.floor + 0.22 * R
     },
+    flagAt: () => flagPt,
     dispose() {
       stop()
       disposeCanvas()

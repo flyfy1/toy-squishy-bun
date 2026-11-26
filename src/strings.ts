@@ -29,7 +29,6 @@ const en = {
   sq_l_m50: "50. We should talk about this.",
   sq_l_m200: "200. I have given you everything. I have nothing left. Still soft though.",
   sq_l_name: "Still {name}. Still fine.",
-  sq_paw_chip: "Real cat paws: purr.integ.life →",
   sound_on: "Sound on",
   sound_off: "Sound off",
 }
@@ -62,7 +61,6 @@ const zhCN: typeof en = {
   sq_l_m50: "五十下了。我们得谈谈。",
   sq_l_m200: "两百下。我把一切都给你了。但我还是软的。",
   sq_l_name: "还是{name}。还没事。",
-  sq_paw_chip: "真的猫爪在这里：purr.integ.life →",
   sound_on: "声音开",
   sound_off: "声音关",
 }
@@ -95,7 +93,6 @@ const es: typeof en = {
   sq_l_m50: "50. Tenemos que hablar.",
   sq_l_m200: "200. Te lo he dado todo. Pero sigo blandito.",
   sq_l_name: "Sigo siendo {name}. Sigo bien.",
-  sq_paw_chip: "Patas de gato de verdad: purr.integ.life →",
   sound_on: "Sonido sí",
   sound_off: "Sonido no",
 }
@@ -128,7 +125,6 @@ const fr: typeof en = {
   sq_l_m50: "50. Il faut qu’on parle.",
   sq_l_m200: "200. Je t’ai tout donné. Mais je reste tout mou.",
   sq_l_name: "Toujours {name}. Toujours bien.",
-  sq_paw_chip: "De vraies pattes de chat : purr.integ.life →",
   sound_on: "Son activé",
   sound_off: "Son coupé",
 }
@@ -161,7 +157,6 @@ const ja: typeof en = {
   sq_l_m50: "50回。ちょっと話し合おう。",
   sq_l_m200: "200回。ぜんぶあげた。でもまだもちもち。",
   sq_l_name: "まだ{name}。まだ大丈夫。",
-  sq_paw_chip: "本物の肉球はこちら：purr.integ.life →",
   sound_on: "音オン",
   sound_off: "音オフ",
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { MoreMenu, pillClass } from './components/MoreMenu'
 import { applyMeta, locale, t, type Key } from './i18n'
 import { startAnalytics, track } from './analytics'
-import { SKINS, type Skin, bunFromUrl, landing, live, openSheet, parseName, sharePeak, stats, store, syncBunToUrl, trackLanding } from './share'
+import { SKINS, type Skin, arrive, bunFromUrl, landing, live, offer, openSheet, parseName, sharePeak, stats, store, syncBunToUrl, trackLanding } from './share'
 import { Tag } from './components/Tag'
 import { Hint } from './components/Hint'
 import { IconSquish } from './components/ToyIcons'
@@ -64,7 +64,6 @@ export default function App() {
   const [muted, setMuted] = useState(false)
   const [line, setLine] = useState<LineMsg | null>(null)
   const [lineY, setLineY] = useState(0)
-  const [chip, setChip] = useState(false)
   const lineTimer = useRef<number | undefined>(undefined)
   const nameTimer = useRef<number | undefined>(undefined)
   const gaTimer = useRef<number | undefined>(undefined)
@@ -94,6 +93,8 @@ export default function App() {
           setCount(total)
           setBump((b) => b + 1)
           if (MILESTONES.includes(total)) track('squeeze_milestone', { n: total })
+          // the paw skin is a model: a portal to purr's real paw, by the toothpick flag once the line is done
+          if (stats.skin === 'paw') offer('squish', 'paw', () => g.flagAt(), 3600)
         },
         onMax() {
           maxes++
@@ -119,6 +120,8 @@ export default function App() {
       { skin: initial.skin, name: initial.name },
     )
     api.current = g
+    // a portal visit (scratch's bun prize): the tag only
+    arrive('squish', ['top-[calc(max(1.25rem,5vh)+4.6rem)]', 'bg-[#FFFBF3] text-[#6B4A2E] font-medium'])
     setLineY(g.lineY())
     const onResize = () => setLineY(g.lineY())
     window.addEventListener('resize', onResize)
@@ -169,7 +172,6 @@ export default function App() {
     api.current?.setSkin(s)
     syncBunToUrl(parseName(name), s)
     track('skin_set', { skin: s })
-    if (s === 'paw') setChip(true)
   }
 
   const toggleMute = () => {
@@ -201,22 +203,13 @@ export default function App() {
           paper="bg-[#FFFBF3] text-[#6B4A2E] font-medium"
         />
       )}
-      {chip && skin === 'paw' && (
-        <a
-          href="https://purr.integ.life"
-          onPointerDown={(e) => e.stopPropagation()}
-          className="mono-in fixed bottom-[4.5rem] left-1/2 z-20 -translate-x-1/2 whitespace-nowrap rounded-full border border-[#5A3440]/15 bg-[#FFF8F6]/85 px-4 py-2 text-sm font-medium text-[#5A3440] backdrop-blur-md"
-        >
-          {t('sq_paw_chip')}
-        </a>
-      )}
       <div className="fixed left-3 top-3 z-20 select-none" onPointerDown={(e) => e.stopPropagation()}>
         <button type="button" aria-label={t('sq_skin')} onClick={() => setPanel((p) => !p)} className={`${pillClass('squish')} ${name ? '' : '!w-11 justify-center !px-0'}`}>
           <IconSquish />
           {name ? <span className="max-w-[9rem] truncate">{parseName(name)}</span> : null}
         </button>
         {panel && (
-          <div className="mt-2 w-64 rounded-2xl border border-[#5A3440]/15 bg-[#FFF8F6]/92 p-3 text-[#5A3440] shadow-lg backdrop-blur-md">
+          <div data-busy="" className="mt-2 w-64 rounded-2xl border border-[#5A3440]/15 bg-[#FFF8F6]/92 p-3 text-[#5A3440] shadow-lg backdrop-blur-md">
             <input
               value={name}
               maxLength={12}

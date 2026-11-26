@@ -1,0 +1,65 @@
+# Squishy Bun
+
+> A glossy squishy bun with a tiny face. Press it, stretch it, squash it flat and watch it slowly rise back. Hold it hard and it gives up, dizzy. A tiny stress-relief toy, no sign-up.
+
+Squishy Bun (捏捏团子 (zh-CN), Bollito Blandito (es), Petit Mochi Tout Mou (fr), もちもちにぎにぎ (ja)) is a free browser toy at https://squish.integ.life/ by Integ Life. It opens straight into play: no sign-up, no download, no ads, no tutorial. It works with a mouse or a touchscreen on phones, tablets and computers.
+
+## How to play
+
+1. Press and hold the bun with a finger or the mouse. It flattens onto the desk and bulges out at the sides, with a soft dent where you press; two fingers press harder. Let go and it rises back slowly, like a slow-rise foam squishy.
+2. Drag from just outside its edge to stretch it. It pulls out like dough and snaps back with a wobble when you let go.
+3. Its face reacts: calm, then >_<, then dizzy spirals and a sweat drop. Hold a hard squeeze for about a second and it gives up with a squeaky wheeze and a line ("This is my job. I am fine."). Leave it alone and it dozes off; touch it and it wakes with a hop ("I was not asleep. I was proofing.").
+4. Use the bun button to give it a name and pick a skin: mochi, soup bun (小笼包 pleats), tangyuan or cat paw (猫爪捏捏). The name goes on a toothpick flag and on the sticky note, and both are added to the page link (?n=...&s=...), so a friend who opens it gets the same bun.
+
+## Facts
+
+- URL: https://squish.integ.life/
+- Price: free
+- Platforms: any modern web browser (desktop and mobile)
+- Languages: English, 简体中文 (Simplified Chinese), Español, Français and 日本語 (Japanese), picked from the browser language (default English)
+- Sound: synthesised live with the Web Audio API; vibration on Android
+- Made by: Integ Life (https://integ.life/), first published 2026-11-25
+
+## FAQ
+
+**Is there a squishy toy I can play with online?**
+Yes. Squishy Bun at squish.integ.life is a free virtual squishy. Press it with one or two fingers or drag its edge to stretch it; it bulges and slowly rises back like a slow-rise foam or mochi squishy. There is nothing to install and no account.
+
+**What happens if I squeeze too hard?**
+Hold a hard squeeze for about a second and the bun gives up: dizzy spiral eyes, a sweat drop, a squeaky wheeze and a deadpan line. It cannot be broken and there is no score to lose; let go and it slowly rises back.
+
+**Can I put a name on it?**
+Yes. Add a name and it appears on a small paper flag on a toothpick stuck in the bun, and on the sticky note beside it. The name is stored in the page link, so you can send a friend a bun named after your Monday.
+
+**Does it work on phones?**
+Yes. It is built for touch, including two fingers at once, and on Android it gives small vibration ticks as you squeeze. It also works with a mouse.
+
+**Is Squishy Bun free?**
+Yes. It is free, with no sign-up, no download and no ads. It runs in any modern browser on phones, tablets and computers.
+
+**Does it have sound and vibration?**
+Yes. The rubbery creak, the soft release, the wheeze and the wake-up boing are synthesised live in the browser with the Web Audio API, so there are no audio files to load. There is a sound on/off button, and on Android phones squeezing also gives small ticks of vibration; iPhone browsers do not support web vibration.
+
+**Which languages does it support?**
+English, 简体中文 (Simplified Chinese), Español, Français and 日本語 (Japanese). The language is picked automatically from your browser settings; any other language falls back to English.
+
+**Who made it?**
+Integ Life (integ.life). Squishy Bun is one of twelve small stress-relief toys, together with Charge Burst, Void Harvest, Glass Smash, Chain Pop, Knock on Wood, Lap Cat, Scratch That, Peel Off, Give It a Twirl, Tablecloth Trick, Smooth as Silk. More games are at games.integ.life.
+
+**Is any personal data collected?**
+No account and no personal data. At most, anonymous usage statistics (page views and play counts) are collected.
+
+## Related
+
+- [Charge Burst](https://charge.integ.life/): Hold to annoy a pufferfish until it puffs up and blows its spines off.
+- [Void Harvest](https://void.integ.life/): Your cursor is a black hole: swallow the socks, receipts, client emails and Monday. Sometimes it gives one sock back.
+- [Glass Smash](https://smash.integ.life/): Smash a pane of glass with the word you hate written on it.
+- [Chain Pop](https://pop.integ.life/): A sheet of parcel bubble wrap that never runs out. One bubble refuses to pop.
+- [Knock on Wood](https://knock.integ.life/): Tap a wooden fish. Merit +1.
+- [Lap Cat](https://purr.integ.life/): Pet a soft, purring cat on your screen. Mind the belly.
+- [Scratch That](https://scratch.integ.life/): Scratch the silver off a card. Win a nap.
+- [Peel Off](https://peel.integ.life/): Peel the film off a brand-new phone. Then try to put the film down.
+- [Give It a Twirl](https://twirl.integ.life/): A new skirt on a dress form. Swipe to spin it and watch the hem fly out flat.
+- [Tablecloth Trick](https://yoink.integ.life/): Whip a silk tablecloth out from under Mum's bowls. Fast, or everything goes with it.
+- [Smooth as Silk](https://silk.integ.life/): A silk curtain at an open window. Drag it, let go, watch it fall back.
+- [Integ Games](https://games.integ.life/): more browser games

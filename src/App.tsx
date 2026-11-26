@@ -5,7 +5,7 @@ import { startAnalytics, track } from './analytics'
 import { SKINS, type Skin, bunFromUrl, landing, live, openSheet, parseName, sharePeak, stats, store, syncBunToUrl, trackLanding } from './share'
 import { Tag } from './components/Tag'
 import { Hint } from './components/Hint'
-import { IconSquish } from './components/Icons'
+import { IconSquish } from './components/ToyIcons'
 import { startGame, type GameApi } from './game'
 
 const fmt = new Intl.NumberFormat(locale)

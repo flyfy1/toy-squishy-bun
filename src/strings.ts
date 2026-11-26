@@ -2,6 +2,7 @@
 // The text every toy shares (names for the More menu, Share, About) lives in i18n.ts.
 
 const en = {
+  name_squish: "Squishy Bun",
   sq_tag: "Someone handed you “{name}”.",
   sq_tag0: "Someone handed you a bun.",
   sq_reply_ph: "Name it",
@@ -34,6 +35,7 @@ const en = {
 }
 
 const zhCN: typeof en = {
+  name_squish: "捏捏团子",
   sq_tag: "有人把「{name}」交给你了",
   sq_tag0: "有人把一只团子交给你了",
   sq_reply_ph: "给它起个名字",
@@ -66,6 +68,7 @@ const zhCN: typeof en = {
 }
 
 const es: typeof en = {
+  name_squish: "Bollito Blandito",
   sq_tag: "Alguien te ha dejado a «{name}».",
   sq_tag0: "Alguien te ha dejado un bollo.",
   sq_reply_ph: "Ponle nombre",
@@ -98,6 +101,7 @@ const es: typeof en = {
 }
 
 const fr: typeof en = {
+  name_squish: "Petit Mochi Tout Mou",
   sq_tag: "Quelqu’un vous a confié « {name} ».",
   sq_tag0: "Quelqu’un vous a confié une brioche.",
   sq_reply_ph: "Donnez-lui un nom",
@@ -130,6 +134,7 @@ const fr: typeof en = {
 }
 
 const ja: typeof en = {
+  name_squish: "もちもちにぎにぎ",
   sq_tag: "「{name}」を託されました",
   sq_tag0: "団子を一個託されました",
   sq_reply_ph: "名前をつけて",

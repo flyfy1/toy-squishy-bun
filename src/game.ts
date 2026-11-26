@@ -8,6 +8,7 @@ import type { Skin as SkinId } from './share'
 import { drawFace, type FaceState } from './face'
 import { sfx } from './sfx'
 import { t, type Key } from './i18n'
+import { act } from './analytics'
 import { propLayout, drawCup, drawNote, drawSteam, loadHand, HAND, type PropLayout } from './props'
 
 export type { FaceState }
@@ -348,6 +349,7 @@ export function startGame(canvas: HTMLCanvasElement, ev: GameEvents, opts: { ski
     if (p.mode === 'press' && p.d > 0.05) ghosts.push({ ...p, id: -1 })
     const counted = (p.mode === 'press' && p.dMax > 0.15) || (p.mode === 'grab' && p.stretch > 1.12)
     if (counted) {
+      act(p.mode === 'press' ? 'squeeze' : 'stretch')
       squeezes++
       ev.onSqueeze(squeezes)
       if (squeezes === 50) say('sq_l_m50', undefined, true)
